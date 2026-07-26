@@ -2,6 +2,9 @@ import { test, expect } from '@playwright/test';
 
 test('presents the product and hydrated macOS release on desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'platform', { value: 'Linux x86_64' });
+  });
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Stay close to the work.' })).toBeVisible();
@@ -9,7 +12,7 @@ test('presents the product and hydrated macOS release on desktop', async ({ page
     'href',
     '/download/macos',
   );
-  await expect(page.getByText('Version 0.1.0 · 99 MB · Universal')).toBeVisible();
+  await expect(page.getByText('Version 0.1.1 · 99 MB · Universal')).toBeVisible();
   await expect(page.getByLabel('Wess desktop application preview')).toBeVisible();
 });
 

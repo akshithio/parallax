@@ -21,7 +21,7 @@ const server = http.createServer((request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
       available: true,
-      version: '0.1.0',
+      version: '0.1.1',
       downloads: {
         macos: { size: 99 * 1024 * 1024 },
         extension: { size: 64 * 1024 },
