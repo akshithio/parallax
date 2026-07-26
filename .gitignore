@@ -1,0 +1,17 @@
+wess-desktop/.next/
+wess-desktop/.next-build/
+wess-desktop/.next-test/
+wess-desktop/out/
+wess-desktop/dist/
+wess-desktop/node_modules/
+wess-desktop/playwright-report/
+wess-desktop/test-results/
+wess-desktop/tsconfig.tsbuildinfo
+wess-extension/dist/
+wess-website/.vercel/
+wess-website/test-results/
+wess-website/playwright-report/
+.vercel/
+node_modules/
+.DS_Store
+.claude/

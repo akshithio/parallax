@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#11110f">
+    <meta
+      name="description"
+      content="Wess is a focused macOS workspace for working through repositories with ChatGPT."
+    >
+    <meta property="og:title" content="Wess — a focused coding workspace">
+    <meta
+      property="og:description"
+      content="Projects, threads, tool activity, and approvals in one calm desktop workspace."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://wess.akshith.io">
+    <title>Wess — a focused coding workspace</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script src="/assets/site.js" defer></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="Wess home">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span>
+          </span>
+          <span>Wess</span>
+          <span class="alpha-badge">Alpha</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#install">Install</a>
+          <a
+            class="github-link"
+            href="https://github.com/akshithio/wess"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3h8v8h-1.5V5.56L4.03 13 3 11.97 10.44 4.5H5V3Z"/></svg>
+          </a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow">
+              <span class="eyebrow-dot"></span>
+              A desktop workspace for macOS
+            </div>
+            <h1>Stay close to the work.</h1>
+            <p class="hero-summary">
+              Wess keeps projects, conversations, tool activity, and approvals in
+              one focused workspace—while ChatGPT stays connected in the background.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="/download/macos" data-macos-download>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7a4.5 4.5 0 0 0-3.5-1.9c-1.5-.2-2.9.9-3.6.9-.7 0-1.8-.9-3-.9a4.6 4.6 0 0 0-3.9 2.4c-1.7 2.9-.4 7.1 1.2 9.4.8 1.1 1.7 2.4 3 2.3 1.2 0 1.6-.7 3.1-.7 1.4 0 1.9.7 3.1.7 1.3 0 2.1-1.1 2.9-2.3.9-1.3 1.3-2.7 1.3-2.8-.1 0-2.7-1-2.7-3.4ZM14.3 5.7c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3Z"/>
+                </svg>
+                <span>
+                  <small>Download for</small>
+                  macOS
+                </span>
+              </a>
+              <a class="button button-secondary" href="/download/extension">
+                Get the Chrome bridge
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5-1-1 4-4-4-4 1-1Z"/></svg>
+              </a>
+            </div>
+            <p class="release-line" aria-live="polite">
+              <span data-release-state>Checking the latest release…</span>
+              <span aria-hidden="true">·</span>
+              macOS 11 or later
+            </p>
+          </div>
+
+          <div class="app-stage" aria-label="Wess desktop application preview">
+            <div class="app-glow"></div>
+            <div class="app-window">
+              <div class="window-bar">
+                <div class="traffic-lights" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="window-title">Wess <em>Alpha</em></div>
+                <div class="window-project">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5A1.5 1.5 0 0 1 3 3h3l1.2 1.5H13A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4.5Z"/></svg>
+                  wess
+                </div>
+                <div class="window-actions">
+                  <span>Open</span>
+                  <span class="icon-button">›_</span>
+                </div>
+              </div>
+              <div class="window-body">
+                <aside class="app-sidebar">
+                  <div class="sidebar-search">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="m10.2 10.2 3 3"/></svg>
+                    Search
+                    <kbd>⌘K</kbd>
+                  </div>
+                  <p class="sidebar-label">Projects</p>
+                  <div class="project active">
+                    <span class="folder-icon"></span>
+                    wess
+                  </div>
+                  <div class="thread active"><span>Polish the download flow</span><i></i></div>
+                  <div class="thread"><span>Package the macOS app</span></div>
+                  <div class="thread"><span>Review release checks</span></div>
+                  <div class="project project-muted">
+                    <span class="folder-icon"></span>
+                    research-notes
+                  </div>
+                  <div class="sidebar-settings">⌘&nbsp;&nbsp;Settings</div>
+                </aside>
+                <div class="conversation">
+                  <div class="conversation-inner">
+                    <div class="user-message">
+                      Build a download site and prepare the first release.
+                    </div>
+                    <div class="activity-group">
+                      <div class="activity-heading">
+                        <span>Preparing the release workspace</span>
+                        <span class="status-check">✓</span>
+                      </div>
+                      <div class="activity-command">
+                        <span class="prompt-mark">›_</span>
+                        <code>pnpm verify</code>
+                        <span class="status-check">✓</span>
+                      </div>
+                    </div>
+                    <div class="activity-group active-activity">
+                      <div class="activity-heading">
+                        <span class="pulse-text">Publishing the macOS package</span>
+                        <span class="status-ring"></span>
+                      </div>
+                    </div>
+                    <p class="assistant-copy">
+                      The website, desktop app, and browser bridge now share one
+                      release path. Each version is checked before its downloads
+                      become available.
+                    </p>
+                  </div>
+                  <div class="composer">
+                    <span>Ask for follow-up changes or attach files</span>
+                    <div class="composer-row">
+                      <span>High</span>
+                      <span>Full access</span>
+                      <span>Attach</span>
+                      <button aria-label="Send message">↑</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="principles" id="how-it-works">
+          <div class="section-heading">
+            <p class="section-kicker">One workspace, end to end</p>
+            <h2>Enough context to stay oriented.<br>Enough restraint to stay focused.</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card feature-wide">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4L12 6.5h6.5A2.5 2.5 0 0 1 21 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>
+              </div>
+              <h3>Projects remain projects</h3>
+              <p>
+                Threads stay grouped by repository, with their own folder,
+                history, active state, and unread status.
+              </p>
+              <div class="mini-projects">
+                <span><i></i>wess</span>
+                <span><i></i>invariant-pairs</span>
+                <span><i></i>research-notes</span>
+              </div>
+            </article>
+            <article class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9 3 3-3 3M13 15h4"/><rect x="3" y="4" width="18" height="16" rx="3"/></svg>
+              </div>
+              <h3>Tool activity that reads naturally</h3>
+              <p>Related commands collect beneath clear activity labels, with output available when you need it.</p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.4 3.2 7.8 7.5 9.5 4.3-1.7 7.5-5.1 7.5-9.5V6L12 3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>
+              </div>
+              <h3>Approval without interruption</h3>
+              <p>Workspace-changing actions turn the composer into a calm, focused review surface.</p>
+            </article>
+            <article class="feature-card feature-wide">
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M8 4.2c2.4 2.2 3.6 4.8 3.6 7.8S10.4 17.6 8 19.8M16 4.2c-2.4 2.2-3.6 4.8-3.6 7.8s1.2 5.6 3.6 7.8"/></svg>
+              </div>
+              <h3>Use the ChatGPT account you already have</h3>
+              <p>
+                The Chrome bridge connects the desktop workspace to your signed-in
+                ChatGPT tab. No separate model credentials are stored in Wess.
+              </p>
+              <div class="bridge-line">
+                <span class="bridge-node">W</span>
+                <i></i>
+                <span class="bridge-status"><b></b>Connected locally</span>
+                <i></i>
+                <span class="bridge-node bridge-chat">C</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="install-section" id="install">
+          <div class="install-card">
+            <div class="install-copy">
+              <p class="section-kicker">Start in a few minutes</p>
+              <h2>Install once.<br>Keep working.</h2>
+              <p>
+                Wess checks for new releases in the background. Downloaded updates
+                install on the next restart, with status available in Settings.
+              </p>
+              <a class="text-link" href="/download/macos">
+                Download the latest macOS release
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5-1-1 4-4-4-4 1-1Z"/></svg>
+              </a>
+            </div>
+            <ol class="install-steps">
+              <li>
+                <span>1</span>
+                <div>
+                  <h3>Install Wess</h3>
+                  <p>Open the DMG and move Wess into Applications.</p>
+                </div>
+              </li>
+              <li>
+                <span>2</span>
+                <div>
+                  <h3>Add the Chrome bridge</h3>
+                  <p>Download, unpack, and load the extension in Chrome.</p>
+                </div>
+              </li>
+              <li>
+                <span>3</span>
+                <div>
+                  <h3>Choose a project</h3>
+                  <p>Open a folder and start a thread from the desktop app.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </section>
+
+        <section class="final-cta">
+          <div>
+            <p class="section-kicker">Wess for macOS</p>
+            <h2>Make the repository<br>the center of the conversation.</h2>
+          </div>
+          <a class="button button-primary" href="/download/macos">
+            Download Wess
+            <svg class="arrow-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5-1-1 4-4-4-4 1-1Z"/></svg>
+          </a>
+        </section>
+      </main>
+
+      <footer>
+        <a class="brand footer-brand" href="/">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
+          <span>Wess</span>
+        </a>
+        <p>Built by <a href="https://akshith.io">Akshith</a>.</p>
+        <div>
+          <a href="https://github.com/akshithio/wess">GitHub</a>
+          <a href="/download/extension">Chrome bridge</a>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
