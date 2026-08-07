@@ -20,9 +20,9 @@ function setText(selector, value) {
   if (node && value) node.textContent = value;
 }
 
-function clearPlaceholder(selector) {
+function markPending(selector) {
   const node = document.querySelector(selector);
-  if (node) node.textContent = '';
+  if (node) node.textContent = 'Pending';
 }
 
 async function hydrateRelease() {
@@ -34,8 +34,8 @@ async function hydrateRelease() {
     const release = await response.json();
     if (!release.available) {
       status.textContent = 'First signed release coming soon';
-      clearPlaceholder('[data-release-macos-size]');
-      clearPlaceholder('[data-release-extension-size]');
+      markPending('[data-release-macos-size]');
+      markPending('[data-release-extension-size]');
       return;
     }
 
@@ -50,13 +50,13 @@ async function hydrateRelease() {
     const macosSize = formatBytes(macos?.size);
     const extensionSize = formatBytes(extension?.size);
     if (macosSize) setText('[data-release-macos-size]', macosSize);
-    else clearPlaceholder('[data-release-macos-size]');
+    else markPending('[data-release-macos-size]');
     if (extensionSize) setText('[data-release-extension-size]', extensionSize);
-    else clearPlaceholder('[data-release-extension-size]');
+    else markPending('[data-release-extension-size]');
   } catch {
     status.textContent = 'View the latest release on GitHub';
-    clearPlaceholder('[data-release-macos-size]');
-    clearPlaceholder('[data-release-extension-size]');
+    markPending('[data-release-macos-size]');
+    markPending('[data-release-extension-size]');
   }
 }
 
