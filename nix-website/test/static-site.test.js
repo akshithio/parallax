@@ -56,10 +56,11 @@ test('only caches immutably what has an immutable name', () => {
   assert.doesNotMatch(valueFor('/assets/(.*)'), /immutable/);
   assert.match(valueFor('/assets/(.*)'), /must-revalidate/);
 
-  // The fonts rule has to be declared first to win over the general one.
+  // Vercel applies later matching rules over earlier ones, so the narrower
+  // fonts rule has to come last or the general one overwrites it.
   assert.ok(
     rules.findIndex((rule) => rule.source === '/assets/fonts/(.*)')
-      < rules.findIndex((rule) => rule.source === '/assets/(.*)'),
+      > rules.findIndex((rule) => rule.source === '/assets/(.*)'),
   );
 });
 
