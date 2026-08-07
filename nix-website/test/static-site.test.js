@@ -16,17 +16,20 @@ test('publishes stable download and repository links', () => {
   assert.match(html, /https:\/\/github\.com\/akshithio\/nix/);
 });
 
-test('builds on the self-hosted Vercel brand foundation', () => {
-  assert.match(html, /<body class="vbg-report">/);
-  assert.match(html, /href="\/assets\/vercel-brand\.css"/);
-  assert.match(styles, /@font-face/);
-  assert.match(styles, /\/assets\/fonts\/geist-latin\.woff2/);
+test('self-hosts both typefaces and ships one stylesheet', () => {
+  assert.match(styles, /\/assets\/fonts\/plex-sans-latin\.woff2/);
+  assert.match(styles, /\/assets\/fonts\/plex-mono-400-latin\.woff2/);
+  assert.equal((html.match(/rel="stylesheet"/g) || []).length, 1);
 });
 
-test('keeps page-owned CSS inside the custom namespace', () => {
-  const selectors = styles.match(/\.vbg-[a-z0-9-]+/g) || [];
-  const published = selectors.filter((selector) => !selector.startsWith('.vbg-custom-'));
-  assert.deepEqual(published, [], `page CSS must not target published classes: ${published}`);
+test('supports light and dark without a theme control', () => {
+  assert.match(html, /name="color-scheme" content="light dark"/);
+  assert.match(styles, /@media \(prefers-color-scheme: dark\)/);
+  assert.doesNotMatch(html, /theme-toggle|data-theme/i);
+});
+
+test('avoids decorative gradients, glows, and shadows', () => {
+  assert.doesNotMatch(styles, /gradient|box-shadow|backdrop-filter|filter: *blur/i);
 });
 
 test('ships responsive and reduced-motion presentation rules', () => {
