@@ -1,14 +1,14 @@
-# Wess
+# Nix
 
-Wess is a macOS workspace for working through repositories with ChatGPT. This
+Nix is a macOS workspace for working through repositories with ChatGPT. This
 repository is a pnpm monorepo containing the desktop application, browser bridge,
 and product website.
 
 ## Packages
 
-- `wess-desktop` — Electron and Next.js desktop application
-- `wess-extension` — Chrome extension that connects ChatGPT to the desktop app
-- `wess-website` — download website deployed on Vercel
+- `nix-desktop` — Electron and Next.js desktop application
+- `nix-extension` — Chrome extension that connects ChatGPT to the desktop app
+- `nix-website` — download website deployed on Vercel
 
 ## Development
 

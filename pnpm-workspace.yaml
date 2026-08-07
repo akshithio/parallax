@@ -1,4 +1,4 @@
 packages:
-  - wess-desktop
-  - wess-extension
-  - wess-website
+  - nix-desktop
+  - nix-extension
+  - nix-website

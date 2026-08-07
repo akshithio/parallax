@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta
+      name="description"
+      content="Nix is a macOS workspace for working through a repository with the ChatGPT account you are already signed in to."
+    >
+    <meta property="og:title" content="Nix — a macOS workspace for your repository and your ChatGPT account">
+    <meta
+      property="og:description"
+      content="Projects, threads, tool activity, and approvals in one workspace. A local Chrome bridge drives the ChatGPT tab you already have open."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://nix.akshith.io">
+    <title>Nix — a macOS workspace for your repository and your ChatGPT account</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/vercel-brand.css">
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script src="/assets/site.js" defer></script>
+  </head>
+  <body class="vbg-report">
+    <div class="vbg-shell">
+      <a class="vbg-skip-link" href="#main">Skip to content</a>
+
+      <header class="vbg-header">
+        <div class="vbg-masthead">
+          <span class="vbg-identity">
+            <a class="vbg-custom-identity" href="/" aria-label="Nix home">Nix</a>
+          </span>
+          <div class="vbg-document-meta">
+            <span class="vbg-state">Alpha</span>
+            <span class="vbg-context">macOS 11 or later</span>
+          </div>
+        </div>
+      </header>
+
+      <main id="main">
+        <section class="vbg-section vbg-custom-opening">
+          <div class="vbg-grid">
+            <div class="vbg-span-7 vbg-custom-claim">
+              <h1 class="vbg-title">
+                Work through a repository with the ChatGPT account you already
+                have open.
+              </h1>
+              <p class="vbg-lede">
+                Nix is a macOS workspace that holds projects, threads, tool activity,
+                and approvals in one window. A Chrome extension you load yourself
+                drives your signed-in ChatGPT tab, so there is no API key to paste and
+                no second account to create.
+              </p>
+              <div class="vbg-cluster vbg-custom-actions">
+                <a class="vbg-button" href="/download/macos" data-macos-download>
+                  Download for macOS
+                </a>
+                <a class="vbg-custom-secondary" href="/download/extension">
+                  Get the Chrome bridge
+                </a>
+              </div>
+              <p class="vbg-meta vbg-custom-release-line" aria-live="polite" data-release-state>
+                Checking the latest release
+              </p>
+            </div>
+
+            <figure class="vbg-span-5 vbg-custom-figure">
+              <h2 class="vbg-label" id="path-heading">How a message reaches the model</h2>
+              <ol class="vbg-custom-path" aria-labelledby="path-heading">
+                <li class="vbg-custom-node" data-scope="local">
+                  <span class="vbg-custom-node-name">Your repository</span>
+                  <span class="vbg-custom-node-detail">A folder you open from the app</span>
+                </li>
+                <li class="vbg-custom-node" data-scope="local">
+                  <span class="vbg-custom-node-name">Nix</span>
+                  <span class="vbg-custom-node-detail">Threads, tool activity, approvals</span>
+                </li>
+                <li class="vbg-custom-node" data-scope="local">
+                  <span class="vbg-custom-node-name">Chrome bridge</span>
+                  <span class="vbg-custom-node-detail">An extension you load yourself</span>
+                </li>
+                <li class="vbg-custom-node" data-scope="remote">
+                  <span class="vbg-custom-node-name">chatgpt.com</span>
+                  <span class="vbg-custom-node-detail">The tab you are already signed in to</span>
+                </li>
+              </ol>
+              <figcaption class="vbg-caption">
+                The first three steps run on your Mac. Only the last one is a network
+                session, and it is the one you are already signed in to. Nix stores no
+                model credentials of its own.
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="vbg-section">
+          <div class="vbg-grid">
+            <div class="vbg-span-7 vbg-custom-intro">
+              <h2 class="vbg-heading-24">One workspace instead of a browser tab and a terminal</h2>
+              <p>
+                Work stays grouped the way the repository is already grouped, and
+                anything that needs a decision arrives where you are reading.
+              </p>
+            </div>
+          </div>
+
+          <div class="vbg-grid vbg-custom-surfaces">
+            <section class="vbg-span-4 vbg-custom-surface">
+              <h3 class="vbg-heading-16">Projects stay projects</h3>
+              <p>
+                Threads belong to a repository, with their own folder, history, active
+                state, and unread status.
+              </p>
+            </section>
+            <section class="vbg-span-4 vbg-custom-surface">
+              <h3 class="vbg-heading-16">Tool activity reads as work</h3>
+              <p>
+                Related commands collect beneath one activity label, and raw output
+                stays one click away instead of filling the transcript.
+              </p>
+            </section>
+            <section class="vbg-span-4 vbg-custom-surface">
+              <h3 class="vbg-heading-16">Approvals interrupt once</h3>
+              <p>
+                An action that changes the workspace turns the composer into a review
+                surface, so approving does not mean leaving the conversation.
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <section class="vbg-section">
+          <div class="vbg-grid">
+            <div class="vbg-span-7 vbg-custom-intro">
+              <h2 class="vbg-heading-24">What you download</h2>
+              <p>
+                Both pieces ship from the same tagged release. This page resolves the
+                rows below against the newest GitHub Release, so they describe the
+                build you will actually get.
+              </p>
+            </div>
+          </div>
+
+          <div class="vbg-table-wrap">
+            <table>
+              <caption class="vbg-visually-hidden">
+                Downloads in the latest Nix release, with format, size, and requirement.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Component</th>
+                  <th scope="col">Format</th>
+                  <th scope="col" class="vbg-numeric">Size</th>
+                  <th scope="col">Requirement</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Nix for macOS</th>
+                  <td>Universal .dmg</td>
+                  <td class="vbg-numeric" data-release-macos-size>Resolving</td>
+                  <td>macOS 11 or later, Apple silicon or Intel</td>
+                </tr>
+                <tr>
+                  <th scope="row">Chrome bridge</th>
+                  <td>Unpacked .zip</td>
+                  <td class="vbg-numeric" data-release-extension-size>Resolving</td>
+                  <td>Chrome with developer mode enabled</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="vbg-caption vbg-custom-table-caption">
+            The macOS build is signed, notarized, and universal. Sizes come from the
+            release assets when the page loads.
+          </p>
+        </section>
+
+        <section class="vbg-section">
+          <div class="vbg-grid">
+            <div class="vbg-span-7 vbg-custom-intro">
+              <h2 class="vbg-heading-24">Install once, then let it update</h2>
+              <p>
+                Three steps, and then Nix checks for new releases in the background. A
+                downloaded update installs on the next restart, and its status stays
+                visible in Settings.
+              </p>
+            </div>
+          </div>
+
+          <div class="vbg-grid vbg-custom-steps">
+            <section class="vbg-span-4 vbg-custom-step">
+              <p class="vbg-label">Step 1</p>
+              <h3 class="vbg-heading-16">Move Nix into Applications</h3>
+              <p>Open the DMG and drag the app across.</p>
+            </section>
+            <section class="vbg-span-4 vbg-custom-step">
+              <p class="vbg-label">Step 2</p>
+              <h3 class="vbg-heading-16">Load the Chrome bridge</h3>
+              <p>
+                Unpack the ZIP, open <span class="vbg-mono">chrome://extensions</span>,
+                turn on developer mode, and load the unpacked folder.
+              </p>
+            </section>
+            <section class="vbg-span-4 vbg-custom-step">
+              <p class="vbg-label">Step 3</p>
+              <h3 class="vbg-heading-16">Open a repository</h3>
+              <p>
+                Sign in to ChatGPT in that Chrome profile, pick a folder in Nix, and
+                start a thread.
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <section class="vbg-section vbg-custom-close">
+          <div class="vbg-grid">
+            <div class="vbg-span-7 vbg-custom-intro">
+              <h2 class="vbg-heading-24">Start with the repository you have open right now</h2>
+              <p>
+                The download is the whole evaluation. Install it, point it at a folder,
+                and see whether the workspace holds up on real work.
+              </p>
+            </div>
+            <div class="vbg-span-5 vbg-custom-close-action">
+              <a class="vbg-button" href="/download/macos">Download for macOS</a>
+              <p class="vbg-note">
+                Alpha. The workspace, the bridge protocol, and the release layout can
+                still change between versions.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="vbg-footer">
+        <span class="vbg-span-4 vbg-custom-footer-identity">Nix</span>
+        <span class="vbg-span-8 vbg-custom-footer-meta">
+          <span>Built by <a href="https://akshith.io">Akshith</a></span>
+          <a href="https://github.com/akshithio/nix">GitHub</a>
+        </span>
+      </footer>
+    </div>
+  </body>
+</html>
