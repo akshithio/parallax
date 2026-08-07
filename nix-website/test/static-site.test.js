@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +41,36 @@ test('ships responsive and reduced-motion presentation rules', () => {
 test('does not depend on remote fonts or scripts', () => {
   assert.doesNotMatch(html, /fonts\.(googleapis|gstatic)\.com/);
   assert.doesNotMatch(html, /<script[^>]+https?:\/\//);
+});
+
+test('only caches immutably what has an immutable name', () => {
+  const rules = vercelConfig.headers.filter((rule) => rule.source.startsWith('/assets/'));
+  const valueFor = (source) => rules
+    .find((rule) => rule.source === source)
+    .headers.find((header) => header.key === 'Cache-Control')
+    .value;
+
+  // Font filenames encode family and subset, so their bytes never change.
+  assert.match(valueFor('/assets/fonts/(.*)'), /immutable/);
+  // styles.css and site.js keep stable names, so they must revalidate.
+  assert.doesNotMatch(valueFor('/assets/(.*)'), /immutable/);
+  assert.match(valueFor('/assets/(.*)'), /must-revalidate/);
+
+  // The fonts rule has to be declared first to win over the general one.
+  assert.ok(
+    rules.findIndex((rule) => rule.source === '/assets/fonts/(.*)')
+      < rules.findIndex((rule) => rule.source === '/assets/(.*)'),
+  );
+});
+
+test('busts the cache when a stamped asset changes', () => {
+  for (const relative of ['styles.css', 'site.js']) {
+    const hash = createHash('sha256')
+      .update(readFileSync(path.join(root, 'public', 'assets', relative)))
+      .digest('hex')
+      .slice(0, 10);
+    assert.match(html, new RegExp(`/assets/${relative.replace('.', '\\.')}\\?v=${hash}`));
+  }
 });
 
 test('uses pnpm for local and Vercel dependency installation', () => {

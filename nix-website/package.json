@@ -9,9 +9,11 @@
   "scripts": {
     "dev": "vercel dev",
     "preview": "node scripts/preview.js",
+    "stamp": "node scripts/stamp-assets.js",
+    "test:stamp": "node scripts/stamp-assets.js --check",
     "test:node": "node --test test/*.test.js",
     "test:workflow": "playwright test",
-    "test": "pnpm run test:node && pnpm run test:workflow",
+    "test": "pnpm run test:stamp && pnpm run test:node && pnpm run test:workflow",
     "verify": "pnpm test"
   },
   "devDependencies": {
