@@ -26,9 +26,9 @@ const protocol = loadTypeScriptModule(
 
 test('parser preserves narration and calls in emission order', () => {
   const result = protocol.parseAgentActions(
-    '{parallax:note}I will inspect the entry points next.{/parallax:note}\n' +
-      '{parallax:run}cat package.json{/parallax:run}\n' +
-      '{parallax:run}sed -n "1,160p" src/index.ts{/parallax:run}',
+    '{plx:note}I will inspect the entry points next.{/plx:note}\n' +
+      '{plx:run}cat package.json{/plx:run}\n' +
+      '{plx:run}sed -n "1,160p" src/index.ts{/plx:run}',
   );
   assert.deepEqual(
     result.actions.map((action) => action.type),
@@ -38,15 +38,15 @@ test('parser preserves narration and calls in emission order', () => {
 });
 
 test('parser does not promote a truncated action to an executable call', () => {
-  const result = protocol.parseAgentActions('{parallax:run}cat package.json');
+  const result = protocol.parseAgentActions('{plx:run}cat package.json');
   assert.equal(result.hasDone, false);
   assert.deepEqual(result.actions, []);
-  assert.equal(protocol.stripAgentTags('{parallax:run}cat package.json'), '');
+  assert.equal(protocol.stripAgentTags('{plx:run}cat package.json'), '');
 });
 
 test('parser accepts the canonical completed-answer wrapper', () => {
   const result = protocol.parseAgentActions(
-    '{parallax:done}The project has two runtime components.{/parallax:done}',
+    '{plx:done}The project has two runtime components.{/plx:done}',
   );
   assert.equal(result.hasDone, true);
   assert.equal(result.actions[0].text, 'The project has two runtime components.');
@@ -54,8 +54,8 @@ test('parser accepts the canonical completed-answer wrapper', () => {
 
 test('parser preserves explicit human-review requests on actions', () => {
   const result = protocol.parseAgentActions(
-    '{parallax:run approval="required"}pnpm install{/parallax:run}\n' +
-      '{parallax:write path="README.md" approval="required"}content{/parallax:write}',
+    '{plx:run approval="required"}pnpm install{/plx:run}\n' +
+      '{plx:write path="README.md" approval="required"}content{/plx:write}',
   );
   assert.deepEqual(result.actions, [
     { type: 'run', command: 'pnpm install', approval: 'required' },
@@ -65,14 +65,14 @@ test('parser preserves explicit human-review requests on actions', () => {
 
 test('parser tolerates spaced tags and decodes escaped attributes', () => {
   const result = protocol.parseAgentActions(
-    '{ parallax:search query="&quot;message&quot;" path="src" /}',
+    '{ plx:search query="&quot;message&quot;" path="src" /}',
   );
   assert.deepEqual(result.actions[0], {
     type: 'search',
     query: '"message"',
     path: 'src',
   });
-  assert.equal(protocol.stripAgentTags('{ parallax:search query="hello" /}'), '');
+  assert.equal(protocol.stripAgentTags('{ plx:search query="hello" /}'), '');
 });
 
 test('git global path options preserve read-only command classification', () => {

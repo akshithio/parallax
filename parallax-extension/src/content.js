@@ -1261,13 +1261,13 @@ function renderedMessageText(element) {
 
 function isCompleteParallaxResponse(value) {
   const text = String(value || '').trim();
-  const opening = /\{parallax:(note|run|write|patch|done)\b[^}]*\}/g;
+  const opening = /\{plx:(note|run|write|patch|done)\b[^}]*\}/g;
   let cursor = 0;
   let found = false;
   let match = null;
   while ((match = opening.exec(text)) !== null) {
     if (text.slice(cursor, match.index).trim()) return false;
-    const close = `{/parallax:${match[1]}}`;
+    const close = `{/plx:${match[1]}}`;
     const closeAt = text.indexOf(close, opening.lastIndex);
     if (closeAt < 0) return false;
     found = true;

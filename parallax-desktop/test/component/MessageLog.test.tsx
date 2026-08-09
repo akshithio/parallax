@@ -171,7 +171,7 @@ describe('MessageLog work transcript', () => {
           },
           {
             role: 'assistant',
-            text: '{parallax:run}cat package.json',
+            text: '{plx:run}cat package.json',
             streaming: false,
           },
         ])}
@@ -184,7 +184,7 @@ describe('MessageLog work transcript', () => {
         'The response ended before its next action was complete. Send the request again to continue.',
       ),
     ).toBeInTheDocument()
-    expect(screen.queryByText('{parallax:run}cat package.json')).not.toBeInTheDocument()
+    expect(screen.queryByText('{plx:run}cat package.json')).not.toBeInTheDocument()
     expect(screen.queryByText(/can't parse/i)).not.toBeInTheDocument()
   })
 
@@ -225,7 +225,7 @@ describe('MessageLog work transcript', () => {
           { role: 'user', text: 'Explain this repository.' },
           repeated,
           repeated,
-          { role: 'assistant', text: "{parallax:note}I'll map the project structure first{/parallax" },
+          { role: 'assistant', text: "{plx:note}I'll map the project structure first{/parallax" },
           repeated,
           { role: 'assistant', text: 'The project is a desktop application.' },
         ])}
@@ -301,7 +301,7 @@ describe('MessageLog work transcript', () => {
           userMessage,
           {
             role: 'assistant',
-            text: '{parallax:no',
+            text: '{plx:no',
             streaming: true,
           },
         ])}
@@ -332,7 +332,7 @@ describe('MessageLog work transcript', () => {
           activity,
           {
             role: 'assistant',
-            text: '{parallax:note}Understanding potential',
+            text: '{plx:note}Understanding potential',
             streaming: true,
           },
         ])}

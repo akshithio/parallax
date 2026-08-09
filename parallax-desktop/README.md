@@ -18,7 +18,7 @@ The communication flow is:
 2. The Electron process sends it to the extension over a local WebSocket.
 3. The extension submits the message through ChatGPT.
 4. The extension captures the streamed response and returns it to the desktop app.
-5. The desktop app parses any `‹parallax:...›` tool actions.
+5. The desktop app parses any `‹plx:...›` tool actions.
 6. Allowed actions run inside the selected project folder.
 7. Tool results are sent back to ChatGPT until it produces a final prose response.
 
@@ -209,21 +209,21 @@ On the first message of a conversation, Parallax prepends an agent-system prompt
 The model may respond with tool actions such as:
 
 ```text
-‹parallax:list path="src" /›
+‹plx:list path="src" /›
 ```
 
 ```text
-‹parallax:read path="src/index.ts" /›
+‹plx:read path="src/index.ts" /›
 ```
 
 ```text
-‹parallax:search query="TODO|FIXME" path="src" /›
+‹plx:search query="TODO|FIXME" path="src" /›
 ```
 
 ```text
-‹parallax:run›pnpm test‹/parallax:run›
+‹plx:run›pnpm test‹/plx:run›
 ```
 
 ```text
-‹parallax:write path="src/example.ts"›
+‹plx:write path="src/example.ts"›
 export const example = true

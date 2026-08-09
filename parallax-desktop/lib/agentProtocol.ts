@@ -1,8 +1,8 @@
 // Parser for the Parallax agent protocol emitted by the model.
 //
-// Delimiters: the canonical form is BRACES { } — {parallax:run}…{/parallax:run}. Braces
+// Delimiters: the canonical form is BRACES { } — {plx:run}…{/plx:run}. Braces
 // aren't special in Markdown or HTML, so a bare tag survives a DOM scrape intact
-// (ChatGPT's renderer parses <parallax:run> into an element and the delimiters vanish),
+// (ChatGPT's renderer parses <plx:run> into an element and the delimiters vanish),
 // and the model reproduces braces far more reliably than the old guillemets ‹ ›.
 // For tolerance the parser still accepts < >, the guillemets, and their common
 // look-alikes on both ends (see OPEN/CLOSE), so pre-switch threads keep working.
@@ -26,8 +26,8 @@ export interface ParseResult {
 // The delimiters the model is TOLD to use are BRACES { } — chosen because the
 // model reproduces them near-perfectly (unlike the old guillemets ‹ ›, which it
 // substituted with look-alikes) AND because braces aren't special in Markdown or
-// HTML, so a bare {parallax:run} survives a DOM scrape intact (angle brackets don't —
-// the browser parses <parallax:run> into an element and the delimiters vanish).
+// HTML, so a bare {plx:run} survives a DOM scrape intact (angle brackets don't —
+// the browser parses <plx:run> into an element and the delimiters vanish).
 //
 // We still ACCEPT the legacy guillemets and their look-alikes on both ends, so
 // threads mid-flight from before the switch keep working. `{` `}` are literal
@@ -36,11 +36,11 @@ const OPEN = '{<‹⟨«〈＜〈'
 const CLOSE = '}>›⟩»〉＞〉'
 
 // Group 1 = tag, 2 = raw attrs, 3 = body (paired form only). \1 pairs the close
-// tag to its opener. The close allows stray whitespace (‹ / parallax:run ›) because
+// tag to its opener. The close allows stray whitespace (‹ / plx:run ›) because
 // the model sometimes spaces it out.
 const TAG_RE = new RegExp(
-  `[${OPEN}]\\s*parallax:(note|read|list|search|run|write|done)\\b([^${CLOSE}]*?)` +
-    `(?:\\/[${CLOSE}]|[${CLOSE}]([\\s\\S]*?)[${OPEN}]\\s*\\/\\s*parallax:\\1\\s*[${CLOSE}])`,
+  `[${OPEN}]\\s*plx:(note|read|list|search|run|write|done)\\b([^${CLOSE}]*?)` +
+    `(?:\\/[${CLOSE}]|[${CLOSE}]([\\s\\S]*?)[${OPEN}]\\s*\\/\\s*plx:\\1\\s*[${CLOSE}])`,
   'g',
 )
 
@@ -118,7 +118,7 @@ export function parseAgentActions(text: string): ParseResult {
 export interface ToolResult {
   status: 'ok' | 'error'
   content: string
-  /** For ‹parallax:write›: a unified diff of the change, shown in the UI only (never
+  /** For ‹plx:write›: a unified diff of the change, shown in the UI only (never
    *  fed back to the model — it just needs the short confirmation in `content`). */
   diff?: string
 }
@@ -206,7 +206,7 @@ function escapeAttr(s: string): string {
   return String(s ?? '').replace(/"/g, '&quot;').replace(/[\r\n]+/g, ' ')
 }
 
-/** Serialize executed tool results into the {parallax:result} blocks fed back to the model. */
+/** Serialize executed tool results into the {plx:result} blocks fed back to the model. */
 // ChatGPT rejects an over-long message outright ("The message you submitted was
 // too long"), which kills the whole turn. The executor's per-result caps (100KB a
 // command, 200KB a file) are far too generous once the model BATCHES — and we
@@ -284,7 +284,7 @@ export function formatAgentResults(actions: AgentAction[], results: ToolResult[]
           attrs = `kind="${a.type}"`
       }
       const body = truncateResult(bodies[i], budgets[i])
-      return `{parallax:result ${attrs} status="${r.status}"}\n${body}\n{/parallax:result}`
+      return `{plx:result ${attrs} status="${r.status}"}\n${body}\n{/plx:result}`
     })
     .join('\n\n')
 }
@@ -295,35 +295,35 @@ export function stripAgentTags(text: string): string {
   // never disagree about what's a tag. `O`/`C` are the char-class bodies.
   const O = OPEN
   const C = CLOSE
-  // A paired ‹parallax:TAG›…‹/parallax:TAG›. `tag` may be a literal ("done") or an
+  // A paired ‹plx:TAG›…‹/plx:TAG›. `tag` may be a literal ("done") or an
   // alternation whose close backreferences \1 ("(note|read|…)").
   const paired = (tag: string) =>
     new RegExp(
-      `[${O}]\\s*parallax:${tag}\\b[^${C}]*[${C}]([\\s\\S]*?)[${O}]\\s*\\/\\s*parallax:${tag.startsWith('(') ? '\\1' : tag}\\s*[${C}]`,
+      `[${O}]\\s*plx:${tag}\\b[^${C}]*[${C}]([\\s\\S]*?)[${O}]\\s*\\/\\s*plx:${tag.startsWith('(') ? '\\1' : tag}\\s*[${C}]`,
       'g',
     )
   return (
     text
-      // ‹parallax:done›…final answer…‹/parallax:done› — UNWRAP: keep the answer, drop the tag.
+      // ‹plx:done›…final answer…‹/plx:done› — UNWRAP: keep the answer, drop the tag.
       .replace(paired('done'), '$1')
-      // ‹parallax:result›… blocks are the harness's; if echoed into the answer, drop them.
+      // ‹plx:result›… blocks are the harness's; if echoed into the answer, drop them.
       .replace(paired('result'), '')
       .replace(paired('(note|read|list|search|run|write)'), '')
-      .replace(new RegExp(`[${O}]\\s*parallax:(?:note|read|list|search|run|write|done)\\b[^${C}]*\\/[${C}]`, 'g'), '')
-      // STREAMING: ‹parallax:done› opened but hasn't closed yet — unwrap the partial
+      .replace(new RegExp(`[${O}]\\s*plx:(?:note|read|list|search|run|write|done)\\b[^${C}]*\\/[${C}]`, 'g'), '')
+      // STREAMING: ‹plx:done› opened but hasn't closed yet — unwrap the partial
       // answer so it renders token-by-token instead of appearing all at once.
-      .replace(new RegExp(`[${O}]\\s*parallax:done\\b[^${C}]*[${C}]([\\s\\S]*)$`), '$1')
+      .replace(new RegExp(`[${O}]\\s*plx:done\\b[^${C}]*[${C}]([\\s\\S]*)$`), '$1')
       // An action opener whose closing tag never arrived is protocol, not prose.
       // Remove the entire unfinished action before the generic tag cleanup below
       // strips its opener and accidentally leaves the command body visible.
       .replace(
         new RegExp(
-          `[${O}]\\s*parallax:(?:note|read|list|search|run|write)\\b[^${C}]*[${C}][\\s\\S]*$`,
+          `[${O}]\\s*plx:(?:note|read|list|search|run|write)\\b[^${C}]*[${C}][\\s\\S]*$`,
         ),
         '',
       )
-      .replace(new RegExp(`[${O}]\\s*\\/?\\s*parallax:[a-z]+[^${C}]*[${C}]`, 'g'), '')
-      .replace(new RegExp(`[${O}]\\s*parallax:[\\s\\S]*$`, 'g'), '')
+      .replace(new RegExp(`[${O}]\\s*\\/?\\s*plx:[a-z]+[^${C}]*[${C}]`, 'g'), '')
+      .replace(new RegExp(`[${O}]\\s*plx:[\\s\\S]*$`, 'g'), '')
       // A tag opener cut mid-token at the very end — "{w", "{we", "{/parallax". A `w`
       // MUST follow the (optional-slash) opener: a bare trailing "{" is left alone,
       // because braces are common in code and eating a real trailing "{" would

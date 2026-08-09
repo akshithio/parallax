@@ -78,11 +78,11 @@ test('streamEvents preserves bare v1 continuation chunks from encoded items', ()
       payload: {
         type: 'stream-item',
         encoded_item: [
-          'data: {"p":"/message/content/parts/0","o":"append","v":"{parallax:note}Reading"}',
+          'data: {"p":"/message/content/parts/0","o":"append","v":"{plx:note}Reading"}',
           '',
           'data: {"v":" the repository"}',
           '',
-          'data: {"v":" structure{/parallax:note}"}',
+          'data: {"v":" structure{/plx:note}"}',
           '',
         ].join('\n'),
       },
@@ -90,9 +90,9 @@ test('streamEvents preserves bare v1 continuation chunks from encoded items', ()
   }];
 
   assert.deepEqual(streamEvents(encoded), [
-    { p: '/message/content/parts/0', o: 'append', v: '{parallax:note}Reading' },
+    { p: '/message/content/parts/0', o: 'append', v: '{plx:note}Reading' },
     { v: ' the repository' },
-    { v: ' structure{/parallax:note}' },
+    { v: ' structure{/plx:note}' },
   ]);
 });
 

@@ -282,7 +282,7 @@ describe('useParallax transport integration', () => {
     act(() => result.current.send('Inspect this repository.'))
     const workspaceRequest = bridge.api.send.mock.calls[1]
     expect(workspaceRequest[0]).toBe('Inspect this repository.')
-    expect(workspaceRequest[3]).toContain('{parallax:task}\nInspect this repository.\n{/parallax:task}')
+    expect(workspaceRequest[3]).toContain('{plx:task}\nInspect this repository.\n{/plx:task}')
     expect(String(workspaceRequest[3]).length).toBeLessThan(3500)
   })
 
@@ -328,9 +328,9 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Reading the repository structure{/parallax:note}\n' +
-          '{parallax:run}ls -la{/parallax:run}\n' +
-          '{parallax:run}pwd{/parallax:run}',
+          '{plx:note}Reading the repository structure{/plx:note}\n' +
+          '{plx:run}ls -la{/plx:run}\n' +
+          '{plx:run}pwd{/plx:run}',
       })
     })
 
@@ -369,8 +369,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Updating the project{/parallax:note}\n' +
-          '{parallax:write path="README.md" approval="required"}Viewer documentation{/parallax:write}',
+          '{plx:note}Updating the project{/plx:note}\n' +
+          '{plx:write path="README.md" approval="required"}Viewer documentation{/plx:write}',
       })
     })
 
@@ -411,8 +411,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Updating the project{/parallax:note}\n' +
-          '{parallax:write path="README.md"}Viewer documentation{/parallax:write}',
+          '{plx:note}Updating the project{/plx:note}\n' +
+          '{plx:write path="README.md"}Viewer documentation{/plx:write}',
       })
     })
 
@@ -444,8 +444,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Checking the workspace{/parallax:note}\n' +
-          '{parallax:run}printf ready{/parallax:run}',
+          '{plx:note}Checking the workspace{/plx:note}\n' +
+          '{plx:run}printf ready{/plx:run}',
       })
     })
 
@@ -474,11 +474,11 @@ describe('useParallax transport integration', () => {
     window.parallax = bridge.api
     const { result } = renderHook(() => useParallax())
     const actionTurn =
-      '{parallax:note}Creating the application foundation{/parallax:note}\n' +
-      '{parallax:write path="package.json"}{"name":"viewer"}{/parallax:write}\n' +
-      '{parallax:write path="tsconfig.json"}{"compilerOptions":{}}{/parallax:write}\n' +
-      '{parallax:write path="next-env.d.ts"}/// reference types="next"{/parallax:write}\n' +
-      '{parallax:write path="next.config.mjs"}export default {}{/parallax:write}'
+      '{plx:note}Creating the application foundation{/plx:note}\n' +
+      '{plx:write path="package.json"}{"name":"viewer"}{/plx:write}\n' +
+      '{plx:write path="tsconfig.json"}{"compilerOptions":{}}{/plx:write}\n' +
+      '{plx:write path="next-env.d.ts"}/// reference types="next"{/plx:write}\n' +
+      '{plx:write path="next.config.mjs"}export default {}{/plx:write}'
 
     await waitFor(() => expect(result.current.dataLoaded).toBe(true))
     act(() => {
@@ -538,8 +538,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Reading project metadata{/parallax:note}\n' +
-          '{parallax:read path="package.json" /}',
+          '{plx:note}Reading project metadata{/plx:note}\n' +
+          '{plx:read path="package.json" /}',
       })
     })
 
@@ -565,8 +565,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Reading project metadata{/parallax:note}\n' +
-          '{parallax:read path="package.json" /}',
+          '{plx:note}Reading project metadata{/plx:note}\n' +
+          '{plx:read path="package.json" /}',
       })
     })
 
@@ -609,8 +609,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Reading project metadata{/parallax:note}\n' +
-          '{parallax:read path="package.json" /}',
+          '{plx:note}Reading project metadata{/plx:note}\n' +
+          '{plx:read path="package.json" /}',
       })
     })
     await waitFor(() => expect(bridge.api.agentExec).toHaveBeenCalledTimes(1))
@@ -639,8 +639,8 @@ describe('useParallax transport integration', () => {
           convId: 'thread-a',
           url: URL_A,
           text:
-            `{parallax:note}Reading action round ${index + 1}{/parallax:note}\n` +
-            `{parallax:read path="file-${index + 1}.txt" /}`,
+            `{plx:note}Reading action round ${index + 1}{/plx:note}\n` +
+            `{plx:read path="file-${index + 1}.txt" /}`,
         })
       })
       await waitFor(() =>
@@ -653,7 +653,7 @@ describe('useParallax transport integration', () => {
     expect(bridge.api.agentExec).toHaveBeenCalledTimes(30)
     const finalContinuation = bridge.api.send.mock.calls.filter((call) => call[4] === true).at(-1)
     expect(finalContinuation?.[3]).toContain('The action-round limit was reached.')
-    expect(finalContinuation?.[3]).toContain('Reply with one complete {parallax:done} block')
+    expect(finalContinuation?.[3]).toContain('Reply with one complete {plx:done} block')
     expect(
       result.current.conversations['thread-a'].messages.at(-1)?.calls?.[0],
     ).toMatchObject({
@@ -698,7 +698,7 @@ describe('useParallax transport integration', () => {
       bridge.emit('response', {
         convId: 'thread-a',
         url: URL_A,
-        text: '{parallax:done}Finished once.{/parallax:done}',
+        text: '{plx:done}Finished once.{/plx:done}',
       })
     })
 
@@ -706,7 +706,7 @@ describe('useParallax transport integration', () => {
       expect(replacement.result.current.conversations['thread-a'].messages).toHaveLength(1),
     )
     expect(replacement.result.current.conversations['thread-a'].messages[0].text).toBe(
-      '{parallax:done}Finished once.{/parallax:done}',
+      '{plx:done}Finished once.{/plx:done}',
     )
   })
 
@@ -920,8 +920,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          "{parallax:note}I'll inspect the metadata first.{/parallax:note}\n" +
-          '{parallax:read path="package.json" /}',
+          "{plx:note}I'll inspect the metadata first.{/plx:note}\n" +
+          '{plx:read path="package.json" /}',
       })
     })
     await waitFor(() =>
@@ -933,8 +933,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          "{parallax:note}I'll inspect the components next.{/parallax:note}\n" +
-          '{parallax:list path="components" /}',
+          "{plx:note}I'll inspect the components next.{/plx:note}\n" +
+          '{plx:list path="components" /}',
       })
     })
 
@@ -973,9 +973,9 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Reading both files{/parallax:note}\n' +
-          '{parallax:read path="first.txt" /}\n' +
-          '{parallax:read path="second.txt" /}',
+          '{plx:note}Reading both files{/plx:note}\n' +
+          '{plx:read path="first.txt" /}\n' +
+          '{plx:read path="second.txt" /}',
       })
     })
 
@@ -1046,8 +1046,8 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Reading top-level files{/parallax:note}\n' +
-          '{parallax:run}find . -maxdepth 1 -type f{/parallax:run}',
+          '{plx:note}Reading top-level files{/plx:note}\n' +
+          '{plx:run}find . -maxdepth 1 -type f{/plx:run}',
       })
     })
 
@@ -1085,7 +1085,7 @@ describe('useParallax transport integration', () => {
       bridge.emit('response', {
         convId: 'thread-a',
         url: URL_A,
-        text: '{parallax:done}This answer was cut off',
+        text: '{plx:done}This answer was cut off',
       })
     })
 
@@ -1121,15 +1121,15 @@ describe('useParallax transport integration', () => {
         convId: 'thread-a',
         url: URL_A,
         text:
-          '{parallax:note}Reading first task{/parallax:note}\n' +
-          '{parallax:read path="first.txt" /}',
+          '{plx:note}Reading first task{/plx:note}\n' +
+          '{plx:read path="first.txt" /}',
       })
       bridge.emit('response', {
         convId: 'thread-b',
         url: URL_B,
         text:
-          '{parallax:note}Reading second task{/parallax:note}\n' +
-          '{parallax:read path="second.txt" /}',
+          '{plx:note}Reading second task{/plx:note}\n' +
+          '{plx:read path="second.txt" /}',
       })
     })
     await waitFor(() =>
@@ -1139,11 +1139,11 @@ describe('useParallax transport integration', () => {
     act(() => {
       bridge.emit('stream_update', {
         convId: 'thread-a',
-        text: '{parallax:done}First task finished.',
+        text: '{plx:done}First task finished.',
       })
       bridge.emit('stream_update', {
         convId: 'thread-b',
-        text: '{parallax:done}Second task finished.',
+        text: '{plx:done}Second task finished.',
       })
     })
 

@@ -1,5 +1,5 @@
 // Read-only agent tool executor (CommonJS — required by the Electron main process).
-// Runs the model's <parallax:read|list|search> actions against a thread's workspace
+// Runs the model's <plx:read|list|search> actions against a thread's workspace
 // folder. Sandboxed: every path resolves inside `cwd`; nothing is written.
 
 const fs = require('fs');

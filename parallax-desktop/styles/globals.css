@@ -875,7 +875,7 @@ code {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Diff view — unified diff for ‹parallax:write› actions.
+   Diff view — unified diff for ‹plx:write› actions.
    ───────────────────────────────────────────────────────────── */
 .parallax-diff {
   margin: 0;

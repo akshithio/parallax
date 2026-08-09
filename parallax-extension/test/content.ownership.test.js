@@ -253,14 +253,14 @@ test('ordinary assistant responses still have no DOM fallback path', () => {
 test('page recovery accepts only complete Parallax response envelopes', () => {
   const harness = loadContent()
   const complete = [
-    '{parallax:note}Inspecting data{/parallax:note}',
-    '{parallax:run}find . -maxdepth 2 -type f -print{/parallax:run}',
+    '{plx:note}Inspecting data{/plx:note}',
+    '{plx:run}find . -maxdepth 2 -type f -print{/plx:run}',
   ].join('\n')
 
   assert.equal(harness.helpers.isCompleteParallaxResponse(complete), true)
   assert.equal(
     harness.helpers.isCompleteParallaxResponse(
-      '{parallax:note}Inspecting data{/parallax:note}\n{parallax:run}find .',
+      '{plx:note}Inspecting data{/plx:note}\n{plx:run}find .',
     ),
     false,
   )
@@ -269,7 +269,7 @@ test('page recovery accepts only complete Parallax response envelopes', () => {
 
 test('a rejected internal follow-up is removed without erasing a different draft', () => {
   const harness = loadContent()
-  const internal = '{parallax:result kind="run"}output{/parallax:result}'
+  const internal = '{plx:result kind="run"}output{/plx:result}'
   const composer = new harness.FakeTextArea(internal)
   harness.setComposer(composer)
 

@@ -96,7 +96,7 @@ export interface AgentCall {
   label: string
   status: 'running' | 'ok' | 'error' | 'awaiting' | 'blocked' | 'denied'
   result?: string
-  /** ‹parallax:write› only: unified diff of the change, for the diff view in the card. */
+  /** ‹plx:write› only: unified diff of the change, for the diff view in the card. */
   diff?: string
   /** Target path for read/list/write — lets the card highlight by file extension. */
   path?: string
@@ -187,7 +187,7 @@ function normalizeLoadedConversations(
       conversation?.protocolReady ??
       messages.some((message) =>
         Boolean(message.calls?.length) ||
-        /(?:^|[<{‹⟨«〈＜〈])\s*parallax:(?:note|run|write|done)\b/i.test(message.text || ''),
+        /(?:^|[<{‹⟨«〈＜〈])\s*plx:(?:note|run|write|done)\b/i.test(message.text || ''),
       )
     normalized[id] = {
       ...conversation,
@@ -1649,7 +1649,7 @@ export default function useParallax() {
     const kinds = actions.map(a => a.type).join(',') || '(none)'
     wlog(`parse conv=${convId} → actions=[${kinds}] hasDone=${hasDone}`)
 
-    // ‹parallax:done› is terminal and takes PRECEDENCE. If the model wrapped a final
+    // ‹plx:done› is terminal and takes PRECEDENCE. If the model wrapped a final
     // answer in it, we stop here — even if the same scraped blob also contains
     // action tags (stale echoes of earlier turns, or the model mixing act+done).
     // Without this, those echoed tags get re-executed and the harness "replies"
@@ -1670,9 +1670,9 @@ export default function useParallax() {
     )
 
     if (parsedToolActions.length === 0) {
-      const protocolLike = /(?:^|[<{‹⟨«〈＜〈])\s*\/?\s*parallax\s*:/im.test(rawText)
+      const protocolLike = /(?:^|[<{‹⟨«〈＜〈])\s*\/?\s*plx\s*:/im.test(rawText)
       const partialDone =
-        /(?:^|[<{‹⟨«〈＜〈])\s*parallax:done\b/im.test(rawText)
+        /(?:^|[<{‹⟨«〈＜〈])\s*plx:done\b/im.test(rawText)
       const retryCount = protocolRetryCounts.current.get(convId) || 0
       if (protocolLike && retryCount < 2) {
         protocolRetryCounts.current.set(convId, retryCount + 1)
@@ -1696,11 +1696,11 @@ export default function useParallax() {
           return { ...prev, [convId]: { ...conv, messages: msgs } }
         })
         const wire =
-          '{parallax:result kind="protocol" status="error"}\n' +
+          '{plx:result kind="protocol" status="error"}\n' +
           (partialDone
-            ? 'Your final answer was truncated. Re-emit the complete answer now in one concise {parallax:done} block. Do not run tools or add action tags.\n'
-            : 'Your previous action response was incomplete. Re-emit that same action turn now with one complete {parallax:note} and no more than 6 complete action tags. Do not repeat completed work.\n') +
-          '{/parallax:result}'
+            ? 'Your final answer was truncated. Re-emit the complete answer now in one concise {plx:done} block. Do not run tools or add action tags.\n'
+            : 'Your previous action response was incomplete. Re-emit that same action turn now with one complete {plx:note} and no more than 6 complete action tags. Do not repeat completed work.\n') +
+          '{/plx:result}'
         sendAgentContinuation(convId, wire, false)
         return true
       }
@@ -1753,9 +1753,9 @@ export default function useParallax() {
       })
       agentLoopCounts.current.delete(convId)
       const wire =
-        '{parallax:result kind="protocol" status="error"}\n' +
-        `${limitMessage} Reply with one complete {parallax:done} block and no action tags.\n` +
-        '{/parallax:result}'
+        '{plx:result kind="protocol" status="error"}\n' +
+        `${limitMessage} Reply with one complete {plx:done} block and no action tags.\n` +
+        '{/plx:result}'
       sendAgentContinuation(convId, wire, true)
       return true
     }
@@ -1777,7 +1777,7 @@ export default function useParallax() {
   type Disposition = { run: true } | { run: false; status: 'blocked' | 'denied'; content: string }
 
   // Execute a turn's tool actions per `decide`, update the cards, and feed the
-  // combined ‹parallax:result› blocks back into the thread as an invisible turn.
+  // combined ‹plx:result› blocks back into the thread as an invisible turn.
   async function executeTurn(convId: string, toolActions: ToolAction[], decide: (a: ToolAction) => Disposition) {
     const decisions = toolActions.map(decide)
     const runIdx: number[] = []
@@ -1890,9 +1890,9 @@ export default function useParallax() {
 
     const wire =
       `${formatAgentResults(toolActions, results)}\n\n` +
-      '{parallax:result kind="guidance" status="ok"}\n' +
+      '{plx:result kind="guidance" status="ok"}\n' +
       'Answer now if these results are sufficient. For a repository overview, do not read equivalent files from every sibling project; inspect only a missing fact that would materially change the answer.\n' +
-      '{/parallax:result}'
+      '{/plx:result}'
     sendAgentContinuation(convId, wire, true)
   }
 

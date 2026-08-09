@@ -307,9 +307,9 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
   expect(Math.abs(settledThinkingLabel!.y - thinkingLabelMetrics.top)).toBeLessThanOrEqual(0.5)
 
   const firstActionTurn =
-    '{parallax:note}Reading the repository structure{/parallax:note}\n' +
-    '{parallax:run}pwd{/parallax:run}\n' +
-    '{parallax:run}ls -la{/parallax:run}'
+    '{plx:note}Reading the repository structure{/plx:note}\n' +
+    '{plx:run}pwd{/plx:run}\n' +
+    '{plx:run}ls -la{/plx:run}'
   const executionsBeforeActionStream = await page.evaluate(
     () => window.__parallaxHarness.executions.length,
   )
@@ -414,9 +414,9 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
     convId: CONV_ID,
     url: CHAT_URL,
     text:
-      '{parallax:note}Tracing message delivery{/parallax:note}\n' +
-      '{parallax:read path="package.json" /}\n' +
-      '{parallax:list path="components" /}',
+      '{plx:note}Tracing message delivery{/plx:note}\n' +
+      '{plx:read path="package.json" /}\n' +
+      '{plx:list path="components" /}',
   })
 
   const deliveryPhase = page.getByRole('button', {
@@ -436,7 +436,7 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
     convId: CONV_ID,
     url: CHAT_URL,
     text:
-      '{parallax:done}The desktop routes each task through its own browser conversation and renders action rounds as an ordered transcript.{/parallax:done}',
+      '{plx:done}The desktop routes each task through its own browser conversation and renders action rounds as an ordered transcript.{/plx:done}',
   })
 
   const finalAnswer =
@@ -557,8 +557,8 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
     convId: CONV_ID,
     url: CHAT_URL,
     text:
-      '{parallax:note}Reading the repository structure{/parallax:note}\n' +
-      '{parallax:run}ls -la{/parallax:run}',
+      '{plx:note}Reading the repository structure{/plx:note}\n' +
+      '{plx:run}ls -la{/plx:run}',
   })
   const approvalComposer = page.locator('[data-approval-composer]')
   const approvalFrame = page.locator('[data-approval-state]')

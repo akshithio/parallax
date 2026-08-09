@@ -25,11 +25,11 @@ const prompt = loadTypeScriptModule(
 );
 
 test('workspace protocol stays compact', () => {
-  // The budget moved from 3000 when the wire tag went from nix to parallax:
-  // the tag appears 18 times in the prompt, so the rename alone cost ~90 chars.
-  assert.ok(prompt.SYSTEM_PROMPT.length < 3100);
+  // The wire tag is `plx`, not the product name: it repeats in every message in
+  // both directions, so the three characters are worth more than the branding.
+  assert.ok(prompt.SYSTEM_PROMPT.length < 3000);
   const wire = prompt.composeWireMessage('Inspect this repository.', 'example-project');
-  assert.match(wire, /^\{parallax:task\}\nInspect this repository\.\n\{\/parallax:task\}/);
+  assert.match(wire, /^\{plx:task\}\nInspect this repository\.\n\{\/plx:task\}/);
   assert.match(wire, /workspace root is \*\*"example-project"\*\*/);
   assert.match(wire, /not a read boundary/);
   assert.match(wire, /ls \.\.\/repo/);

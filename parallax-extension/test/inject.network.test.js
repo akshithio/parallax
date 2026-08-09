@@ -101,7 +101,7 @@ test('a fetch handoff continues on the socket and completes from network text', 
   const message = {
     message: {
       author: { role: 'assistant' },
-      content: { content_type: 'text', parts: ['{parallax:note}Reading'] },
+      content: { content_type: 'text', parts: ['{plx:note}Reading'] },
     },
   }
   const append = {
@@ -110,7 +110,7 @@ test('a fetch handoff continues on the socket and completes from network text', 
     v: ' repository',
   }
   const continuation = {
-    v: ' structure{/parallax:note}\n{parallax:run}ls -la{/parallax:run}',
+    v: ' structure{/plx:note}\n{plx:run}ls -la{/plx:run}',
   }
   const socketFrame = {
     replacement_wrapper: [{
@@ -176,7 +176,7 @@ test('a fetch handoff continues on the socket and completes from network text', 
   assert.equal(responsePosts.at(-1).source, 'network')
   assert.equal(
     responsePosts.at(-1).text,
-    '{parallax:note}Reading repository structure{/parallax:note}\n{parallax:run}ls -la{/parallax:run}',
+    '{plx:note}Reading repository structure{/plx:note}\n{plx:run}ls -la{/plx:run}',
   )
 
   const metric = harness.messages.find((message) => message.__parallax_net_metric).metric
