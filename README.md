@@ -1,14 +1,14 @@
-# Nix
+# Parallax
 
-Nix is a macOS workspace for working through repositories with ChatGPT. This
+Parallax is a macOS workspace for working through repositories with ChatGPT. This
 repository is a pnpm monorepo containing the desktop application, browser bridge,
 and product website.
 
 ## Packages
 
-- `nix-desktop` — Electron and Next.js desktop application
-- `nix-extension` — Chrome extension that connects ChatGPT to the desktop app
-- `nix-website` — download website deployed on Vercel
+- `parallax-desktop` — Electron and Next.js desktop application
+- `parallax-extension` — Chrome extension that connects ChatGPT to the desktop app
+- `parallax-website` — download website deployed on Vercel
 
 ## Development
 

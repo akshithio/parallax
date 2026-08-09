@@ -3,10 +3,10 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const versions = new Map([
   ['workspace', require(path.join(root, 'package.json')).version],
-  ['desktop', require(path.join(root, 'nix-desktop', 'package.json')).version],
-  ['extension package', require(path.join(root, 'nix-extension', 'package.json')).version],
-  ['extension manifest', require(path.join(root, 'nix-extension', 'manifest.json')).version],
-  ['website', require(path.join(root, 'nix-website', 'package.json')).version],
+  ['desktop', require(path.join(root, 'parallax-desktop', 'package.json')).version],
+  ['extension package', require(path.join(root, 'parallax-extension', 'package.json')).version],
+  ['extension manifest', require(path.join(root, 'parallax-extension', 'manifest.json')).version],
+  ['website', require(path.join(root, 'parallax-website', 'package.json')).version],
 ]);
 
 const expected = versions.get('workspace');

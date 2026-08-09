@@ -1,4 +1,4 @@
 packages:
-  - nix-desktop
-  - nix-extension
-  - nix-website
+  - parallax-desktop
+  - parallax-extension
+  - parallax-website

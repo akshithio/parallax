@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta
+      name="description"
+      content="Parallax is a macOS workspace for working through a repository with the ChatGPT account you are already signed in to."
+    >
+    <meta property="og:title" content="Parallax — a macOS workspace for your repository and your ChatGPT account">
+    <meta
+      property="og:description"
+      content="Projects, threads, tool activity, and approvals in one workspace. A local Chrome bridge drives the ChatGPT tab you already have open."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://parallax.akshith.io">
+    <title>Parallax — a macOS workspace for your repository and your ChatGPT account</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/styles.css?v=d8e812d2a8">
+    <script src="/assets/site.js?v=50e0d12cb9" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <div class="shell">
+      <header class="masthead">
+        <a class="wordmark" href="/" aria-label="Parallax home">parallax</a>
+        <div class="masthead-meta">
+          <span class="label">Alpha</span>
+          <span class="label">macOS 11 or later</span>
+        </div>
+      </header>
+
+      <main id="main">
+        <section class="opening">
+          <div class="opening-claim">
+            <h1>Work through a repository with the ChatGPT account you already have open.</h1>
+            <p class="lede">
+              Parallax is a macOS workspace that holds projects, threads, tool activity,
+              and approvals in one window. A Chrome extension you load yourself
+              drives your signed-in ChatGPT tab, so there is no API key to paste and
+              no second account to create.
+            </p>
+            <div class="actions">
+              <a class="button" href="/download/macos" data-macos-download>Download for macOS</a>
+              <a class="link" href="/download/extension">Get the Chrome bridge</a>
+            </div>
+            <p class="release-line" aria-live="polite" data-release-state>
+              Checking the latest release
+            </p>
+          </div>
+
+          <figure class="path">
+            <h2 class="label" id="path-heading">How a message reaches the model</h2>
+            <ol class="path-steps" aria-labelledby="path-heading">
+              <li data-scope="local">
+                <span class="path-name">Your repository</span>
+                <span class="path-detail">A folder you open from the app</span>
+              </li>
+              <li data-scope="local">
+                <span class="path-name">Parallax</span>
+                <span class="path-detail">Threads, tool activity, approvals</span>
+              </li>
+              <li data-scope="local">
+                <span class="path-name">Chrome bridge</span>
+                <span class="path-detail">An extension you load yourself</span>
+              </li>
+              <li data-scope="remote">
+                <span class="path-name">chatgpt.com</span>
+                <span class="path-detail">The tab you are already signed in to</span>
+              </li>
+            </ol>
+            <figcaption>
+              The first three steps run on your Mac. Only the last one is a network
+              session, and it is the one you are already signed in to. Parallax stores no
+              model credentials of its own.
+            </figcaption>
+          </figure>
+        </section>
+
+        <section>
+          <div class="section-intro">
+            <h2>One workspace instead of a browser tab and a terminal</h2>
+            <p>
+              Work stays grouped the way the repository is already grouped, and
+              anything that needs a decision arrives where you are reading.
+            </p>
+          </div>
+
+          <div class="columns">
+            <section>
+              <p class="label">Projects</p>
+              <h3>Threads belong to a repository</h3>
+              <p>
+                Each project keeps its own folder, history, active state, and unread
+                status instead of scrolling into one shared feed.
+              </p>
+            </section>
+            <section>
+              <p class="label">Tool activity</p>
+              <h3>Commands read as work, not noise</h3>
+              <p>
+                Related commands collect beneath one activity label, and raw output
+                stays one click away instead of filling the transcript.
+              </p>
+            </section>
+            <section>
+              <p class="label">Approvals</p>
+              <h3>Review without leaving the thread</h3>
+              <p>
+                An action that changes the workspace turns the composer into a review
+                surface, so approving does not mean switching context.
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-intro">
+            <h2>What you download</h2>
+            <p>
+              Both pieces ship from the same tagged release. This page resolves the
+              rows below against the newest GitHub Release, so they describe the
+              build you will actually get.
+            </p>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <caption>
+                Downloads in the latest Parallax release, with format, size, and requirement.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Component</th>
+                  <th scope="col">Format</th>
+                  <th scope="col" class="numeric">Size</th>
+                  <th scope="col">Requirement</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Parallax for macOS</th>
+                  <td>Universal .dmg</td>
+                  <td class="numeric" data-release-macos-size>Resolving</td>
+                  <td>macOS 11 or later, Apple silicon or Intel</td>
+                </tr>
+                <tr>
+                  <th scope="row">Chrome bridge</th>
+                  <td>Unpacked .zip</td>
+                  <td class="numeric" data-release-extension-size>Resolving</td>
+                  <td>Chrome with developer mode enabled</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note table-note">
+            The macOS build is signed, notarized, and universal. Sizes come from the
+            release assets when the page loads.
+          </p>
+        </section>
+
+        <section>
+          <div class="section-intro">
+            <h2>Install once, then let it update</h2>
+            <p>
+              Three steps, and then Parallax checks for new releases in the background. A
+              downloaded update installs on the next restart, and its status stays
+              visible in Settings.
+            </p>
+          </div>
+
+          <div class="columns">
+            <section>
+              <p class="label">Step 1</p>
+              <h3>Move Parallax into Applications</h3>
+              <p>Open the DMG and drag the app across.</p>
+            </section>
+            <section>
+              <p class="label">Step 2</p>
+              <h3>Load the Chrome bridge</h3>
+              <p>
+                Unpack the ZIP, open <span class="mono">chrome://extensions</span>,
+                turn on developer mode, and load the unpacked folder.
+              </p>
+            </section>
+            <section>
+              <p class="label">Step 3</p>
+              <h3>Open a repository</h3>
+              <p>
+                Sign in to ChatGPT in that Chrome profile, pick a folder in Parallax, and
+                start a thread.
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <section class="closing">
+          <div class="section-intro">
+            <h2>Start with the repository you have open right now</h2>
+            <p>
+              The download is the whole evaluation. Install it, point it at a folder,
+              and see whether the workspace holds up on real work.
+            </p>
+          </div>
+          <div class="closing-action">
+            <a class="button" href="/download/macos">Download for macOS</a>
+            <p class="note">
+              Alpha. The workspace, the bridge protocol, and the release layout can
+              still change between versions.
+            </p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="colophon">
+        <span class="label">Parallax</span>
+        <span class="colophon-links">
+          <a href="https://akshith.io">Built by Akshith</a>
+          <a href="https://github.com/akshithio/parallax">GitHub</a>
+        </span>
+      </footer>
+    </div>
+  </body>
+</html>

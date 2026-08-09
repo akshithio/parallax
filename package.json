@@ -1,7 +1,7 @@
 {
-  "name": "nix",
+  "name": "parallax",
   "version": "0.1.1",
-  "description": "Nix desktop workspace, browser bridge, and website",
+  "description": "Parallax desktop workspace, browser bridge, and website",
   "author": "Akshith Chowdary",
   "private": true,
   "packageManager": "pnpm@10.8.1",
@@ -11,11 +11,11 @@
     ]
   },
   "scripts": {
-    "dev": "pnpm --filter nix-desktop dev",
-    "dev:website": "pnpm --filter nix-website dev",
-    "test": "pnpm --filter nix-extension test && pnpm --filter nix-desktop test && pnpm --filter nix-website test",
+    "dev": "pnpm --filter parallax-desktop dev",
+    "dev:website": "pnpm --filter parallax-website dev",
+    "test": "pnpm --filter parallax-extension test && pnpm --filter parallax-desktop test && pnpm --filter parallax-website test",
     "verify:versions": "node scripts/verify-versions.js",
-    "verify": "pnpm run verify:versions && pnpm --filter nix-extension verify && pnpm --filter nix-desktop verify && pnpm --filter nix-website verify",
-    "package:extension": "pnpm --filter nix-extension package"
+    "verify": "pnpm run verify:versions && pnpm --filter parallax-extension verify && pnpm --filter parallax-desktop verify && pnpm --filter parallax-website verify",
+    "package:extension": "pnpm --filter parallax-extension package"
   }
 }

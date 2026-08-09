@@ -1,0 +1,14 @@
+{
+  "name": "parallax-extension",
+  "version": "0.1.1",
+  "description": "Chrome bridge for Parallax",
+  "author": "Akshith Chowdary",
+  "private": true,
+  "scripts": {
+    "test:syntax": "node --check src/background.js && node --check src/content.js && node --check src/inject.js && node --check src/popup.js && node --check src/protocol-core.js",
+    "test:node": "node --test test/*.test.js",
+    "test": "pnpm run test:syntax && pnpm run test:node",
+    "verify": "pnpm test",
+    "package": "node scripts/package.js"
+  }
+}
