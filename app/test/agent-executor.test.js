@@ -53,5 +53,5 @@ test('shell reads can inspect a parent directory', async () => {
 
   assert.equal(results[0].status, 'ok');
   assert.match(results[0].content, /^\$ ls \.\./);
-  assert.match(results[0].content, /parallax-desktop/);
+  assert.match(results[0].content, /app/);
 });

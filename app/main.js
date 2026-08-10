@@ -496,7 +496,7 @@ function startWebSocketServer() {
 // ChatGPT tab" every single time — that treadmill is on us, not the user.
 function watchExtensionForReload() {
   if (!process.argv.includes('--dev')) return;
-  const extDir = path.join(__dirname, '..', 'parallax-extension');
+  const extDir = path.join(__dirname, '..', 'ext');
   if (!fs.existsSync(extDir)) return;
   let timer = null;
   try {

@@ -1,8 +1,8 @@
 {
-  "name": "parallax-website",
+  "name": "@parallax/web",
   "version": "0.1.1",
   "description": "Download website for Parallax",
-  "author": "Akshith Chowdary",
+  "author": "Akshith Garapati",
   "license": "MIT",
   "private": true,
   "type": "module",

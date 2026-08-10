@@ -1,8 +1,8 @@
 {
-  "name": "parallax-extension",
+  "name": "@parallax/ext",
   "version": "0.1.1",
   "description": "Chrome bridge for Parallax",
-  "author": "Akshith Chowdary",
+  "author": "Akshith Garapati",
   "license": "MIT",
   "private": true,
   "scripts": {

@@ -1,8 +1,8 @@
 {
-  "name": "parallax-desktop",
+  "name": "@parallax/app",
   "version": "0.1.1",
   "description": "Desktop workspace for Parallax",
-  "author": "Akshith Chowdary",
+  "author": "Akshith Garapati",
   "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.8.1",

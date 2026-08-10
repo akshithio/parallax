@@ -1,4 +1,4 @@
 packages:
-  - parallax-desktop
-  - parallax-extension
-  - parallax-website
+  - "app"
+  - "ext"
+  - "web"

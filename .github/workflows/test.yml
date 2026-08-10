@@ -25,5 +25,5 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter parallax-desktop exec playwright install --with-deps chromium
+      - run: pnpm --filter @parallax/app exec playwright install --with-deps chromium
       - run: pnpm verify

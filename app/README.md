@@ -11,8 +11,8 @@ This UI layer is an adaptation of [T3 Code](https://github.com/pingdotgg/t3code)
 
 Parallax consists of two applications:
 
-- `parallax-desktop` — Electron and Next.js desktop interface
-- `parallax-extension` — Chrome extension that bridges ChatGPT to the desktop app
+- `app` — Electron and Next.js desktop interface
+- `ext` — Chrome extension that bridges ChatGPT to the desktop app
 
 The communication flow is:
 
@@ -59,7 +59,7 @@ Some editor integration is currently macOS-specific.
 Install the desktop dependencies:
 
 ```bash
-cd parallax-desktop
+cd app
 pnpm install
 ```
 
@@ -68,7 +68,7 @@ Install the browser extension:
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Select **Load unpacked**.
-4. Choose the `parallax-extension` directory.
+4. Choose the `ext` directory.
 5. Open ChatGPT in Chrome.
 6. Confirm that the Parallax extension is connected.
 
@@ -188,7 +188,7 @@ applications checking for updates.
 ## Project Structure
 
 ```text
-parallax-desktop/
+app/
 ├── components/          React UI components
 ├── hooks/
 │   └── useParallax.ts       Main conversation and agent-loop state

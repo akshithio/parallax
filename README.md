@@ -1,14 +1,30 @@
-# Parallax
+# <img src="./web/public/logo-light.svg#gh-dark-mode-only" alt="parallax logo" width="30" height="30" align="center" /><img src="./web/public/logo-dark.svg#gh-light-mode-only" alt="parallax logo" width="30" height="30" align="center" /> parallax
 
-Parallax is a macOS workspace for working through repositories with ChatGPT. This
-repository is a pnpm monorepo containing the desktop application, browser bridge,
-and product website.
+Parallax is a macOS workspace for working through repositories with the ChatGPT
+account you are already signed in to. A Chrome extension you load yourself drives
+your signed-in tab, so there is no API key to paste and no second account to
+create.
 
-## Packages
+<p>
+  <a href="https://parallax.akshith.io">Download for macOS</a>
+</p>
 
-- `parallax-desktop` — Electron and Next.js desktop application
-- `parallax-extension` — Chrome extension that connects ChatGPT to the desktop app
-- `parallax-website` — download website deployed on Vercel
+This repository is a pnpm monorepo with three packages:
+
+- `app` — Electron and Next.js desktop application
+- `ext` — Chrome extension that connects ChatGPT to the desktop app
+- `web` — download website deployed at `https://parallax.akshith.io`
+
+The first three hops stay on your Mac. Only the last one is a network session,
+and it is the ChatGPT tab you already have open. Parallax stores no model
+credentials of its own.
+
+```mermaid
+flowchart LR
+  repo["your repository"] --> app["Parallax desktop"]
+  app -->|"local WebSocket"| bridge["Chrome bridge"]
+  bridge -->|"your signed-in tab"| chatgpt["chatgpt.com"]
+```
 
 ## Licence
 
@@ -26,7 +42,7 @@ The upstream licence is reproduced in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTIC
 ## Icons
 
 The app, extension, and site marks are generated from the SVG sources in
-`parallax-desktop/build`. After editing one, regenerate every raster:
+`app/build`. After editing one, regenerate every raster:
 
 ```bash
 pnpm icons

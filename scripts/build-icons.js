@@ -15,8 +15,8 @@ const { spawnSync } = require('node:child_process');
 const { chromium } = require('@playwright/test');
 
 const root = path.join(__dirname, '..');
-const desktopBuild = path.join(root, 'parallax-desktop', 'build');
-const extensionIcons = path.join(root, 'parallax-extension', 'src', 'icons');
+const desktopBuild = path.join(root, 'app', 'build');
+const extensionIcons = path.join(root, 'ext', 'src', 'icons');
 
 // macOS wants both a 1x and a 2x rendering of each nominal size.
 const ICNS_SIZES = [
@@ -81,7 +81,7 @@ async function main() {
     path.join(desktopBuild, 'GENERATED.md'),
     '`icon.icns`, `icon-dark.png`, and `icon-light.png` are generated from the\n'
       + 'SVG sources in this directory, along with the extension icons in\n'
-      + '`parallax-extension/src/icons`. Edit the SVGs, then run `pnpm run icons`.\n',
+      + '`ext/src/icons`. Edit the SVGs, then run `pnpm run icons`.\n',
   );
 
   console.log('Wrote icon.icns, dock icons, and 4 extension icons.');

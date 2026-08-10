@@ -34,10 +34,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm run verify:versions
-      - run: pnpm --filter parallax-desktop run verify:release-tag
-      - run: pnpm --filter parallax-desktop run verify:release-env
-      - run: pnpm --filter parallax-desktop exec playwright install chromium
+      - run: pnpm --filter @parallax/app run verify:release-tag
+      - run: pnpm --filter @parallax/app run verify:release-env
+      - run: pnpm --filter @parallax/app exec playwright install chromium
       - run: pnpm verify
-      - run: pnpm --filter parallax-extension package
-      - run: pnpm --filter parallax-desktop run release:mac
-      - run: gh release upload "$GITHUB_REF_NAME" parallax-extension/dist/*.zip --clobber
+      - run: pnpm --filter @parallax/ext package
+      - run: pnpm --filter @parallax/app run release:mac
+      - run: gh release upload "$GITHUB_REF_NAME" ext/dist/*.zip --clobber
