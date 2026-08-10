@@ -1,0 +1,46 @@
+Parallax Privacy Policy
+
+Effective date: August 9, 2026
+
+Parallax is a macOS workspace with a Chrome extension that connects the desktop app to ChatGPT tabs in the Chrome profile where the user is already signed in.
+
+Data handling
+
+When the user starts a task in Parallax, the extension handles the prompt, any attachment the user selected, the streamed response, the task tab URL and conversation identifier, and the model choice needed to route the task. The extension also accesses the ChatGPT page content required to enter that prompt, upload the selected attachment, and return the response to the desktop app.
+
+The extension operates only on chatgpt.com and chat.openai.com. It creates a separate inactive task tab for each Parallax thread. Although the bridge code is available on matching pages, it remains inert in tabs Parallax does not own and reads a response stream only while a Parallax-initiated turn is active.
+
+Data storage
+
+The extension stores the local bridge address, bridge status, and the mapping between Parallax threads and their task tabs in Chrome's local extension storage. It does not store prompts, attachments, or responses in Chrome extension storage.
+
+Parallax conversation history and attachment metadata are stored by the desktop app on the user's Mac. Parallax does not operate developer data servers, analytics, advertising, tracking pixels, remote logging, or a data brokerage service.
+
+Data transmission and sharing
+
+The extension exchanges task data with the Parallax desktop app over a local WebSocket on the user's Mac. The user's prompt and selected attachments are sent to ChatGPT, and ChatGPT's response is returned through the user's signed-in ChatGPT session, only to provide the task the user requested.
+
+Parallax does not sell user data. It does not transfer user data to the developer, advertisers, data brokers, or unrelated third parties.
+
+Permissions
+
+Parallax requests browser permissions needed to provide its single-purpose desktop-to-ChatGPT bridge:
+
+- storage saves the local bridge settings and thread-to-tab mappings.
+- alarms keeps the Manifest V3 bridge available while the user has enabled it.
+- scripting installs the bridge code in a Parallax-owned task tab when Chrome restores or replaces that tab.
+- host permissions for chatgpt.com and chat.openai.com allow the extension to create and operate the task tabs used for Parallax requests.
+
+Parallax uses these permissions only to provide the bridge described in this policy.
+
+Data deletion
+
+Users can disable the bridge from the extension popup. Users can remove the extension's locally stored settings and mappings by uninstalling the extension or clearing its extension storage. Parallax conversation data can be deleted from the desktop app.
+
+Limited use
+
+Parallax's use of information received from Google APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.
+
+Contact
+
+For questions about this privacy policy, contact the developer at mail@akshith.io.

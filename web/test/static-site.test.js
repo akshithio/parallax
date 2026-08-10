@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+const privacy = readFileSync(path.join(root, 'public', 'privacy.txt'), 'utf8');
 const styles = readFileSync(path.join(root, 'public', 'assets', 'styles.css'), 'utf8');
 const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const vercelConfig = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8'));
@@ -15,6 +16,25 @@ test('publishes stable download and repository links', () => {
   assert.match(html, /href="\/download\/macos"/);
   assert.match(html, /href="\/download\/extension"/);
   assert.match(html, /https:\/\/github\.com\/akshithio\/parallax/);
+});
+
+test('publishes a complete privacy disclosure for the Chrome bridge', () => {
+  assert.match(html, /href="\/privacy"/);
+  assert.match(privacy, /separate inactive task tab/);
+  assert.match(privacy, /local WebSocket/);
+  assert.match(privacy, /does not operate developer data servers/);
+  assert.match(privacy, /Chrome Web Store User Data Policy/);
+  assert.deepEqual(
+    vercelConfig.rewrites.find(({ source }) => source === '/privacy'),
+    { source: '/privacy', destination: '/privacy.txt' },
+  );
+  const privacyHeaders = vercelConfig.headers
+    .find(({ source }) => source === '/privacy')
+    .headers;
+  assert.equal(
+    privacyHeaders.find(({ key }) => key === 'Content-Type').value,
+    'text/plain; charset=utf-8',
+  );
 });
 
 test('self-hosts both typefaces and ships one stylesheet', () => {
