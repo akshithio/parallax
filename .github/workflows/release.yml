@@ -41,3 +41,12 @@ jobs:
       - run: pnpm --filter @parallax/ext package
       - run: pnpm --filter @parallax/app run release:mac
       - run: gh release upload "$GITHUB_REF_NAME" ext/dist/*.zip --clobber
+      - name: Publish Chrome Web Store update
+        if: vars.CWS_AUTO_PUBLISH == 'true'
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+        run: pnpm --filter @parallax/ext publish:store

@@ -10,6 +10,9 @@ const connectBtn = el('connect-btn');
 const healBtn = el('heal-btn');
 const errorMsg = el('error-msg');
 const hint = el('hint');
+const enableBtn = el('enable-btn');
+const disableBtn = el('disable-btn');
+const bridgeControls = el('bridge-controls');
 
 function paint(dot, label, state, text) {
   dot.className = 'dot ' + state;
@@ -31,15 +34,21 @@ async function refresh() {
   let ws = 'disconnected';
   let content = false;
   let error = '';
+  let enabled = false;
   try {
     const resp = await chrome.runtime.sendMessage({ type: 'get_status' });
     if (resp) {
+      enabled = Boolean(resp.enabled);
       ws = resp.ws;
       content = Boolean(resp.content);
       error = resp.error || '';
       if (!urlDirty && resp.url) wsUrlInput.value = resp.url;
     }
   } catch {}
+
+  enableBtn.hidden = enabled;
+  bridgeControls.hidden = !enabled;
+  if (!enabled) return;
 
   const wsOk = ws === 'connected';
   paint(wsDot, wsLabel, wsOk ? 'ok' : 'bad', wsOk ? 'Connected' : ws === 'error' ? 'Error' : 'Disconnected');
@@ -59,6 +68,18 @@ async function refresh() {
         ? 'The ChatGPT page isn’t bridged — this happens after reloading the extension. Reconnect it below.'
         : '';
 }
+
+enableBtn.addEventListener('click', () => {
+  enableBtn.disabled = true;
+  chrome.runtime.sendMessage({ type: 'set_bridge_enabled', enabled: true }, () => {
+    enableBtn.disabled = false;
+    refresh();
+  });
+});
+
+disableBtn.addEventListener('click', () => {
+  chrome.runtime.sendMessage({ type: 'set_bridge_enabled', enabled: false }, refresh);
+});
 
 connectBtn.addEventListener('click', () => {
   errorMsg.textContent = '';

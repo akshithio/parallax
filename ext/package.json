@@ -10,6 +10,8 @@
     "test:node": "node --test test/*.test.js",
     "test": "pnpm run test:syntax && pnpm run test:node",
     "verify": "pnpm test",
-    "package": "node scripts/package.js"
+    "package": "node scripts/package.js",
+    "store:assets": "node scripts/build-store-assets.js",
+    "publish:store": "node scripts/publish-store.js"
   }
 }

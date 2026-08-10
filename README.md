@@ -84,5 +84,16 @@ workspace, builds the signed and notarized universal macOS application, packages
 the Chrome extension, and publishes the update metadata and downloads to a GitHub
 Release.
 
+After the first Chrome Web Store release is published manually, the same tag can
+also upload the new extension package, submit it for review, and publish it after
+approval. Enable that step with the `CWS_AUTO_PUBLISH` repository variable and set
+the publisher and item IDs in `CWS_PUBLISHER_ID` and `CWS_EXTENSION_ID`. The OAuth
+client ID, client secret, and refresh token belong in repository secrets named
+`CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, and `CWS_REFRESH_TOKEN`.
+
+Chrome Web Store copy, privacy declarations, test instructions, and distribution
+choices live in `ext/store/listing.md`. The public privacy policy lives at
+`https://parallax.akshith.io/privacy`.
+
 The website resolves its download buttons against the newest published GitHub
 Release, so releases do not require hardcoded website changes.

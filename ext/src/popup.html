@@ -125,6 +125,19 @@
     }
     .note.error { color: var(--destructive); }
     .note:empty { display: none; }
+    .disclosure {
+      margin-bottom: 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--secondary);
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--muted-foreground);
+    }
+    .disclosure strong { color: var(--foreground); font-weight: 600; }
+    .disclosure a { color: inherit; text-underline-offset: 2px; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
@@ -133,29 +146,43 @@
     <span class="pill">Alpha</span>
   </div>
 
-  <div class="card">
-    <div class="row">
-      <span class="label">Desktop app</span>
-      <span class="status"><span class="dot" id="ws-dot"></span><span id="ws-label">—</span></span>
-    </div>
-    <div class="row">
-      <span class="label">ChatGPT tab</span>
-      <span class="status"><span class="dot" id="tab-dot"></span><span id="tab-label">—</span></span>
-    </div>
-    <div class="row">
-      <span class="label">Page bridge</span>
-      <span class="status"><span class="dot" id="content-dot"></span><span id="content-label">—</span></span>
-    </div>
+  <div class="disclosure" id="disclosure">
+    <strong>Local ChatGPT bridge.</strong>
+    When enabled, Parallax sends prompts and attachments you choose from the
+    desktop app to Parallax-owned ChatGPT task tabs and returns their replies.
+    Task data stays between your Mac and your signed-in ChatGPT session; it is
+    not sent to the developer.
+    <a href="https://parallax.akshith.io/privacy" target="_blank">Privacy details</a>
   </div>
 
-  <label class="field" for="ws-url">WebSocket</label>
-  <input type="text" id="ws-url" value="ws://localhost:8765" spellcheck="false" />
+  <button class="primary" id="enable-btn">Enable local bridge</button>
 
-  <button class="primary" id="connect-btn">Reconnect</button>
-  <button class="secondary" id="heal-btn">Reconnect page bridge</button>
+  <div id="bridge-controls" hidden>
+    <div class="card">
+      <div class="row">
+        <span class="label">Desktop app</span>
+        <span class="status"><span class="dot" id="ws-dot"></span><span id="ws-label">—</span></span>
+      </div>
+      <div class="row">
+        <span class="label">ChatGPT tab</span>
+        <span class="status"><span class="dot" id="tab-dot"></span><span id="tab-label">—</span></span>
+      </div>
+      <div class="row">
+        <span class="label">Page bridge</span>
+        <span class="status"><span class="dot" id="content-dot"></span><span id="content-label">—</span></span>
+      </div>
+    </div>
 
-  <div class="note error" id="error-msg"></div>
-  <div class="note" id="hint"></div>
+    <label class="field" for="ws-url">WebSocket</label>
+    <input type="text" id="ws-url" value="ws://localhost:8765" spellcheck="false" />
+
+    <button class="primary" id="connect-btn">Reconnect</button>
+    <button class="secondary" id="heal-btn">Reconnect page bridge</button>
+    <button class="secondary" id="disable-btn">Disable bridge</button>
+
+    <div class="note error" id="error-msg"></div>
+    <div class="note" id="hint"></div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

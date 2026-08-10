@@ -24,3 +24,16 @@ test('every declared icon exists in the packaged tree', () => {
     assert.ok(fs.existsSync(path.join(root, relative)), `missing ${relative}; run \`pnpm icons\``);
   }
 });
+
+test('uses a store-sized summary that describes the extension single purpose', () => {
+  assert.ok(manifest.description.length <= 132);
+  assert.match(manifest.description, /Parallax desktop workspace/);
+  assert.match(manifest.description, /ChatGPT tabs/);
+});
+
+test('limits host access to the two supported ChatGPT origins', () => {
+  assert.deepEqual(manifest.host_permissions, [
+    'https://chatgpt.com/*',
+    'https://chat.openai.com/*',
+  ]);
+});

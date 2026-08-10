@@ -7,6 +7,7 @@ let contentTabId = null;
 let reconnectTimer = null;
 let reconnectCount = 0;
 let wsUrl = DEFAULT_WS_URL;
+let bridgeEnabled = false;
 const deliveryTasks = new Map(); // one ordered command stream per conversation
 const activeTurns = new Map(); // accepted page turns awaiting a terminal reply
 
@@ -266,6 +267,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 function connect(url) {
+  if (!bridgeEnabled) return;
   if (ws) {
     ws.onclose = null;
     ws.close();
@@ -474,6 +476,30 @@ function connect(url) {
   }
 }
 
+function stopBridge() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  reconnectCount = 0;
+  if (ws) {
+    ws.onclose = null;
+    try { ws.close(1000); } catch (_) {}
+    ws = null;
+  }
+  setStore({ ws_status: 'disconnected', ws_error: '' });
+  for (const port of ports.values()) {
+    try { port.postMessage({ type: 'standby' }); } catch (_) {}
+  }
+}
+
+function startBridge() {
+  for (const port of ports.values()) {
+    try { port.postMessage({ type: 'resume' }); } catch (_) {}
+  }
+  chrome.storage.local.get('ws_url', (data) => {
+    connect(data.ws_url || DEFAULT_WS_URL);
+  });
+}
+
 // NOTE: every tabs.create/update below uses `active: false` ON PURPOSE. Parallax drives
 // its ChatGPT tab invisibly — activating it yanks the user's focus out of the
 // desktop app mid-task, which is jarring and got much worse once the wrong-chat
@@ -616,7 +642,7 @@ chrome.runtime.onConnect.addListener((port) => {
     try {
       // Clears any earlier standby — a tab can be told to stand down before the
       // mapping loads and must be able to come back.
-      port.postMessage({ type: 'resume' });
+      port.postMessage({ type: bridgeEnabled ? 'resume' : 'standby' });
       port.postMessage({
         type: 'ws_status',
         status: ws && ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected',
@@ -634,8 +660,20 @@ chrome.runtime.onConnect.addListener((port) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'connect_ws') {
+    if (!bridgeEnabled) {
+      sendResponse({ ok: false });
+      return true;
+    }
     connect(msg.url || DEFAULT_WS_URL);
     sendResponse({ ok: true });
+  } else if (msg.type === 'set_bridge_enabled') {
+    bridgeEnabled = Boolean(msg.enabled);
+    chrome.storage.local.set({ parallax_bridge_enabled: bridgeEnabled }, () => {
+      if (bridgeEnabled) startBridge();
+      else stopBridge();
+      sendResponse({ ok: true, enabled: bridgeEnabled });
+    });
+    return true;
   } else if (msg.type === 'get_status') {
     chrome.storage.local.get(['ws_status', 'ws_error', 'ws_url'], (st) => {
       // Report the LIVE socket state, not just the persisted one — a stale
@@ -643,15 +681,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // page bridge was actually dead.
       const live = ws && ws.readyState === WebSocket.OPEN;
       sendResponse({
+        enabled: bridgeEnabled,
         ws: live ? 'connected' : st.ws_status === 'connected' ? 'disconnected' : st.ws_status || 'disconnected',
         url: st.ws_url || wsUrl,
         error: st.ws_error || '',
         // Whether the ChatGPT page actually has a live bridge to us.
-        content: Boolean(contentPort),
+        content: bridgeEnabled && Boolean(contentPort),
       });
     });
     return true;
   } else if (msg.type === 'heal_content') {
+    if (!bridgeEnabled) {
+      sendResponse({ ok: false });
+      return true;
+    }
     ensureContentScript().then((ok) => sendResponse({ ok }));
     return true;
   }
@@ -665,6 +708,7 @@ self.addEventListener('unhandledrejection', (e) => {
 });
 
 function ensureConnected() {
+  if (!bridgeEnabled) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   chrome.storage.local.get('ws_url', (data) => {
     connect(data.ws_url || DEFAULT_WS_URL);
@@ -684,7 +728,6 @@ try {
 } catch (_) {}
 
 chrome.runtime.onStartup.addListener(ensureConnected);
-chrome.runtime.onInstalled.addListener(ensureConnected);
 
 // Reloading the extension orphans the content script in every already-open tab
 // (its context dies and it can never reconnect). Re-inject into our conversation
@@ -717,6 +760,8 @@ storageReady.then(() => {
   });
 });
 
-chrome.storage.local.get('ws_url', (data) => {
-  connect(data.ws_url || DEFAULT_WS_URL);
+chrome.storage.local.get(['parallax_bridge_enabled', 'ws_url'], (data) => {
+  bridgeEnabled = data.parallax_bridge_enabled === true;
+  if (bridgeEnabled) startBridge();
+  else setStore({ ws_status: 'disconnected', ws_error: '' });
 });
