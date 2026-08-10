@@ -5,6 +5,8 @@ Parallax Desktop is an Electron-based coding-agent interface that connects a loc
 
 The desktop app manages projects, conversations, tool execution, permissions, file attachments, model selection, and the agent loop. The extension handles communication with ChatGPT in the browser.
 
+This UI layer is an adaptation of [T3 Code](https://github.com/pingdotgg/t3code) by T3 Tools Inc., used under the MIT licence. See [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) for the full notice.
+
 ## Architecture
 
 Parallax consists of two applications:

@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('parallax', {
     ipcRenderer.invoke('preview-recording-stop', { webContentsId }),
   previewSaveRecording: (data, mime) =>
     ipcRenderer.invoke('preview-save-recording', { data, mime }),
+  setDockIcon: (preference) => ipcRenderer.invoke('set-dock-icon', preference),
   getUpdateStatus: () => ipcRenderer.invoke('app-update-status'),
   checkForUpdates: () => ipcRenderer.invoke('app-update-check'),
   installUpdate: () => ipcRenderer.send('app-update-install'),

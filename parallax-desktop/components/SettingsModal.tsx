@@ -9,6 +9,14 @@ interface StatusInfo {
   detail: string
 }
 
+export type AppIconPreference = 'system' | 'light' | 'dark'
+
+export const APP_ICON_OPTIONS: { id: AppIconPreference; label: string }[] = [
+  { id: 'system', label: 'Match system' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+]
+
 export interface UpdateStatus {
   status: 'disabled' | 'idle' | 'checking' | 'downloading' | 'downloaded' | 'installing' | 'up-to-date' | 'error'
   currentVersion: string
@@ -57,11 +65,24 @@ export default function SettingsModal({
   onInstallUpdate,
 }: Props) {
   const [dark, setDark] = useState(true)
+  const [appIcon, setAppIcon] = useState<AppIconPreference>('system')
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
 
   useEffect(() => {
     if (typeof document !== 'undefined') setDark(document.documentElement.classList.contains('dark'))
   }, [open])
+
+  // The dock icon lives in the main process, so restore the saved choice on
+  // mount rather than waiting for the user to open Settings.
+  useEffect(() => {
+    let saved: string | null = null
+    try { saved = localStorage.getItem('parallax:appIcon') } catch {}
+    const preference = APP_ICON_OPTIONS.some(o => o.id === saved)
+      ? (saved as AppIconPreference)
+      : 'system'
+    setAppIcon(preference)
+    window.parallax?.setDockIcon?.(preference)
+  }, [])
 
   useEffect(() => {
     if (!open) setConfirmDeleteAll(false)
@@ -80,6 +101,12 @@ export default function SettingsModal({
     setDark(next)
     document.documentElement.classList.toggle('dark', next)
     try { localStorage.setItem('parallax:theme', next ? 'dark' : 'light') } catch {}
+  }
+
+  function applyAppIcon(next: AppIconPreference) {
+    setAppIcon(next)
+    try { localStorage.setItem('parallax:appIcon', next) } catch {}
+    window.parallax?.setDockIcon?.(next)
   }
 
   if (!open) return null
@@ -117,6 +144,21 @@ export default function SettingsModal({
             <div className="grid grid-cols-2 gap-2">
               <ThemeCard label="Light" active={!dark} onClick={() => applyTheme(false)} scheme="light" />
               <ThemeCard label="Dark" active={dark} onClick={() => applyTheme(true)} scheme="dark" />
+            </div>
+          </Section>
+
+          {/* App icon */}
+          <Section title="App icon" subtitle="Which plate the dock tile uses.">
+            <div className="grid grid-cols-3 gap-2">
+              {APP_ICON_OPTIONS.map((option) => (
+                <AppIconCard
+                  key={option.id}
+                  label={option.label}
+                  active={appIcon === option.id}
+                  onClick={() => applyAppIcon(option.id)}
+                  scheme={option.id === 'system' ? (dark ? 'dark' : 'light') : option.id}
+                />
+              ))}
             </div>
           </Section>
 
@@ -349,6 +391,40 @@ function ThemeCard({ label, active, onClick, scheme }: { label: string; active: 
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M20 6 9 17l-5-5" /></svg>
         )}
       </div>
+    </button>
+  )
+}
+
+function AppIconCard(
+  { label, active, onClick, scheme }:
+  { label: string; active: boolean; onClick: () => void; scheme: 'light' | 'dark' },
+) {
+  const plate = scheme === 'dark' ? '#16161a' : '#fbfbf9'
+  const ink = scheme === 'dark' ? '#fbfbf9' : '#16161a'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'flex flex-col items-center gap-2 rounded-lg border p-2.5 transition-colors',
+        active ? 'border-primary/60 bg-primary/8' : 'border-border/70 hover:bg-accent/50',
+      )}
+    >
+      <svg viewBox="0 0 64 64" className="size-11" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill={plate} />
+        <g fill="none" stroke={ink} strokeLinecap="round">
+          <path d="M32 12v40" strokeWidth="5" opacity="0.36" />
+          <path d="M17 17 32 32 47 32" strokeWidth="7" />
+          <path d="M32 32 47 47" strokeWidth="7" opacity="0.32" />
+        </g>
+      </svg>
+      <span className="flex items-center gap-1 text-[12px] font-medium text-foreground">
+        {label}
+        {active && (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M20 6 9 17l-5-5" /></svg>
+        )}
+      </span>
     </button>
   )
 }

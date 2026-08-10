@@ -1,0 +1,14 @@
+<!--
+  Parallax app icon, dark plate. The mark is the refracted ray: the deflected
+  path solid, the path it would have taken faint, and the boundary between them.
+
+  Source of truth for build/icon.icns. Regenerate with `pnpm run icons`.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect x="88" y="88" width="848" height="848" rx="190" fill="#16161a"/>
+  <g fill="none" stroke="#fbfbf9" stroke-linecap="round">
+    <path d="M512 250v524" stroke-width="70" opacity="0.36"/>
+    <path d="M320 320 512 512 704 512" stroke-width="100"/>
+    <path d="M512 512 704 704" stroke-width="100" opacity="0.32"/>
+  </g>
+</svg>

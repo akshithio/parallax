@@ -24,6 +24,9 @@ function createReleaseConfig(environment = process.env) {
       'preview-preload.js',
       'lib/**/*.js',
       'out/**/*',
+      // Dock icons swapped at runtime from Settings.
+      'build/icon-dark.png',
+      'build/icon-light.png',
       'package.json',
     ],
     asar: true,
@@ -31,6 +34,7 @@ function createReleaseConfig(environment = process.env) {
       category: 'public.app-category.developer-tools',
       hardenedRuntime: true,
       notarize: true,
+      icon: 'build/icon.icns',
       target: ['dmg', 'zip'],
     },
     dmg: {

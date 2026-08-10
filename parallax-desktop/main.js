@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, session, webContents } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, session, webContents, nativeImage, nativeTheme } = require('electron');
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
@@ -10,6 +10,7 @@ const { createDeliveryTracker } = require('./lib/deliveryTracker');
 const { acceptsResponseSource } = require('./lib/transportPolicy');
 const { installAppReloadShortcut } = require('./lib/appReload');
 const { createAppUpdater } = require('./lib/appUpdater');
+const { resolveVariant, iconFileFor, normalizePreference } = require('./lib/dockIcon');
 const { autoUpdater } = require('electron-updater');
 
 // macOS app names for the "Open in…" editor picker, and a reverse map from
@@ -526,6 +527,27 @@ function sendToExtension(msg) {
 
 // Renderer relays its own pipeline trace here so it prints in the same terminal
 // stream as the main/extension/content events — always on, no DevTools needed.
+// Dock icon. The packaged .icns is fixed, but the dock tile can be swapped at
+// runtime so Settings can offer a light or dark plate. macOS only: app.dock is
+// undefined elsewhere.
+let dockIconPreference = 'system';
+
+function applyDockIcon(preference = dockIconPreference) {
+  dockIconPreference = normalizePreference(preference);
+  if (!app.dock) return dockIconPreference;
+  const variant = resolveVariant(dockIconPreference, nativeTheme.shouldUseDarkColors);
+  const file = path.join(__dirname, 'build', iconFileFor(variant));
+  try {
+    const image = nativeImage.createFromPath(file);
+    if (!image.isEmpty()) app.dock.setIcon(image);
+  } catch (error) {
+    wlog('main', `dock icon failed: ${error.message}`);
+  }
+  return dockIconPreference;
+}
+
+ipcMain.handle('set-dock-icon', (_event, preference) => applyDockIcon(preference));
+
 ipcMain.on('parallax-log', (_event, { scope, msg, extra }) => wlog(scope || 'renderer', msg, extra));
 
 ipcMain.on('send-message', (_event, { text, model, intelligence, wireText, silent, expectUrl, convId, msgId: requestedMsgId }) => {
@@ -911,6 +933,10 @@ if (!hasSingleInstanceLock) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
+  });
+
+  nativeTheme.on('updated', () => {
+    if (dockIconPreference === 'system') applyDockIcon();
   });
 
   app.whenReady().then(() => {

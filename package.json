@@ -13,9 +13,13 @@
   "scripts": {
     "dev": "pnpm --filter parallax-desktop dev",
     "dev:website": "pnpm --filter parallax-website dev",
+    "icons": "node scripts/build-icons.js",
     "test": "pnpm --filter parallax-extension test && pnpm --filter parallax-desktop test && pnpm --filter parallax-website test",
     "verify:versions": "node scripts/verify-versions.js",
     "verify": "pnpm run verify:versions && pnpm --filter parallax-extension verify && pnpm --filter parallax-desktop verify && pnpm --filter parallax-website verify",
     "package:extension": "pnpm --filter parallax-extension package"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }
