@@ -9,7 +9,9 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
 const privacy = readFileSync(path.join(root, 'public', 'privacy.txt'), 'utf8');
 const styles = readFileSync(path.join(root, 'public', 'assets', 'styles.css'), 'utf8');
-const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+const workspacePackage = JSON.parse(
+  readFileSync(path.join(root, '..', 'package.json'), 'utf8'),
+);
 const vercelConfig = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 
 test('publishes stable download and repository links', () => {
@@ -94,7 +96,7 @@ test('busts the cache when a stamped asset changes', () => {
   }
 });
 
-test('uses pnpm for local and Vercel dependency installation', () => {
-  assert.equal(packageJson.packageManager, 'pnpm@10.8.1');
+test('uses the workspace pnpm version for Vercel dependency installation', () => {
+  assert.equal(workspacePackage.packageManager, 'pnpm@10.8.1');
   assert.match(vercelConfig.installCommand, /^pnpm /);
 });

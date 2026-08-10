@@ -1,23 +1,22 @@
-# <img src="./web/public/logo-light.svg#gh-dark-mode-only" alt="parallax logo" width="30" height="30" align="center" /><img src="./web/public/logo-dark.svg#gh-light-mode-only" alt="parallax logo" width="30" height="30" align="center" /> parallax
+# <img src="./web/public/logo-light.svg?v=3#gh-dark-mode-only" alt="parallax logo" width="24" height="24" /><img src="./web/public/logo-dark.svg?v=3#gh-light-mode-only" alt="parallax logo" width="24" height="24" /> parallax
 
-Parallax is a macOS workspace for working through repositories with the ChatGPT
-account you are already signed in to. A Chrome extension you load yourself drives
-your signed-in tab, so there is no API key to paste and no second account to
-create.
+Parallax works through repositories from a native desktop workspace. Its Chrome
+extension drives a separate ChatGPT task tab, returns the response to the correct
+desktop thread, and requires no API key or second account.
 
 <p>
   <a href="https://parallax.akshith.io">Download for macOS</a>
 </p>
 
-This repository is a pnpm monorepo with three packages:
+This is one pnpm monorepo with three packages:
 
-- `app` — Electron and Next.js desktop application
-- `ext` — Chrome extension that connects ChatGPT to the desktop app
-- `web` — download website deployed at `https://parallax.akshith.io`
+| Package | Purpose |
+| --- | --- |
+| `app` | Electron and Next.js desktop application |
+| `ext` | Chrome extension connecting ChatGPT task tabs to the desktop app |
+| `web` | Download site deployed at [parallax.akshith.io](https://parallax.akshith.io) |
 
-The first three hops stay on your Mac. Only the last one is a network session,
-and it is the ChatGPT tab you already have open. Parallax stores no model
-credentials of its own.
+## How it works
 
 ```mermaid
 flowchart LR
@@ -26,34 +25,42 @@ flowchart LR
   bridge -->|"your signed-in tab"| chatgpt["chatgpt.com"]
 ```
 
-## Licence
+1. A message starts in a Parallax project thread.
+2. The Electron process sends it to the extension over a local WebSocket on port
+   `8765`.
+3. The extension creates or reuses that thread's inactive ChatGPT task tab.
+4. The extension submits the message and returns the streamed response to the
+   matching desktop thread.
+5. Parallax runs allowed workspace actions and continues the turn until ChatGPT
+   produces a final response.
 
-Parallax is MIT licensed. See [LICENSE](LICENSE).
+Repository access, desktop conversation state, and the bridge connection stay on
+the Mac. ChatGPT traffic uses the signed-in browser session. Parallax stores no
+model credentials and operates no developer data server.
 
-## Credits
+## Features
 
-Parallax's desktop app is an adaptation of the [T3 Code](https://github.com/pingdotgg/t3code)
-UI layer, which is MIT licensed and copyright T3 Tools Inc. The workspace layout,
-message log, composer, and surrounding chrome started there; the agent protocol,
-browser bridge, and release pipeline are Parallax's own.
+- Project folders with persistent, project-specific conversations
+- Streaming responses and automatic workspace-action execution
+- Read, list, search, run, and write actions with configurable permissions
+- File attachments and drag-and-drop uploads
+- Dynamic model and intelligence selection
+- Built-in terminal and file side panel
+- Conversation search, rename, archive, restore, and deletion
+- Project opening in VS Code, Cursor, Zed, IntelliJ IDEA, or Finder
+- Background application updates through GitHub Releases
 
-The upstream licence is reproduced in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+## Requirements
 
-## Icons
-
-The app, extension, and site marks are generated from the SVG sources in
-`app/build`. After editing one, regenerate every raster:
-
-```bash
-pnpm icons
-```
-
-That writes the macOS `.icns`, the light and dark dock tiles, and the four
-extension PNGs.
+- macOS
+- Node.js 18 or later
+- pnpm 10
+- Google Chrome with the Parallax extension installed
+- A signed-in ChatGPT tab in the same Chrome profile
 
 ## Development
 
-Install every workspace package:
+Install all workspace dependencies from the repository root:
 
 ```bash
 pnpm install
@@ -71,29 +78,131 @@ Start the website:
 pnpm dev:website
 ```
 
-Run every package's tests and production checks:
+Load the extension locally:
+
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Select **Load unpacked**.
+4. Choose the repository's `ext` directory.
+5. Open the extension popup and enable the local bridge.
+
+Run every package's tests, type checks, browser workflows, and production build:
 
 ```bash
 pnpm verify
 ```
 
+Useful package-specific commands still run from the repository root:
+
+```bash
+pnpm --filter @parallax/app run test:component
+pnpm --filter @parallax/app run test:integration
+pnpm --filter @parallax/app run test:workflow
+pnpm --filter @parallax/ext package
+pnpm --filter @parallax/web run test:workflow
+```
+
+The desktop workflow tests use a deterministic local bridge. They do not require
+Chrome, a ChatGPT account, or a live extension connection.
+
+## Workspace protocol
+
+The desktop app adds a compact workspace protocol to the first message in a
+thread. ChatGPT can request actions such as:
+
+```text
+‹plx:list path="src" /›
+‹plx:read path="src/index.ts" /›
+‹plx:search query="TODO|FIXME" path="src" /›
+‹plx:run›pnpm test‹/plx:run›
+```
+
+Permission checks are enforced before an action can change the selected project.
+Tool results return through the same thread so the action loop remains ordered.
+
+## Project structure
+
+```text
+.
+├── app/
+│   ├── components/          React interface
+│   ├── hooks/               Conversation and workspace state
+│   ├── lib/                 Protocol, execution, transport, and release logic
+│   ├── pages/               Next.js pages
+│   ├── test/                Unit, component, integration, and workflow tests
+│   ├── main.js              Electron main process
+│   └── preload.js           Renderer IPC bridge
+├── ext/
+│   ├── scripts/             Packaging, store publishing, and asset generation
+│   ├── src/                 Extension runtime
+│   ├── store/               Chrome Web Store copy and graphic assets
+│   └── test/                Extension tests
+├── web/
+│   ├── api/                 Release-backed download endpoints
+│   ├── public/              Static site and privacy policy
+│   └── test/                Website tests
+├── scripts/                 Monorepo-wide verification and icon generation
+├── package.json             Root commands
+└── pnpm-workspace.yaml      Workspace definition
+```
+
+## Icons
+
+The app, extension, and site marks are generated from the SVG sources in
+`app/build`. After editing a source, regenerate every raster from the repository
+root:
+
+```bash
+pnpm icons
+```
+
+This writes the macOS `.icns`, light and dark dock tiles, and extension PNGs.
+
 ## Releases
 
-Pushing a version tag such as `v0.2.0` runs the release workflow. It verifies the
-workspace, builds the signed and notarized universal macOS application, packages
-the Chrome extension, and publishes the update metadata and downloads to a GitHub
-Release.
+Pushing a version tag such as `v0.2.0` runs the release workflow. The workflow
+verifies the monorepo, builds the signed and notarized universal macOS
+application, packages the Chrome extension, and publishes update metadata and
+downloads to a GitHub Release.
 
-After the first Chrome Web Store release is published manually, the same tag can
-also upload the new extension package, submit it for review, and publish it after
-approval. Enable that step with the `CWS_AUTO_PUBLISH` repository variable and set
-the publisher and item IDs in `CWS_PUBLISHER_ID` and `CWS_EXTENSION_ID`. The OAuth
-client ID, client secret, and refresh token belong in repository secrets named
-`CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, and `CWS_REFRESH_TOKEN`.
+Configure these GitHub Actions repository secrets before publishing the macOS
+application:
 
-Chrome Web Store copy, privacy declarations, test instructions, and distribution
-choices live in `ext/store/listing.md`. The public privacy policy lives at
-`https://parallax.akshith.io/privacy`.
+- `CSC_LINK`
+- `CSC_KEY_PASSWORD`
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
 
-The website resolves its download buttons against the newest published GitHub
+The package versions and release tag must match. Missing signing credentials
+fail the release rather than publishing an unsigned build. Installed copies
+check the public GitHub Release feed and install a downloaded update when
+Parallax quits.
+
+After the first Chrome Web Store release is published manually, tagged releases
+can also upload the new extension package, submit it for review, and publish it
+after approval. Enable that step with the `CWS_AUTO_PUBLISH` repository variable,
+set `CWS_PUBLISHER_ID` and `CWS_EXTENSION_ID`, and provide these repository
+secrets:
+
+- `CWS_CLIENT_ID`
+- `CWS_CLIENT_SECRET`
+- `CWS_REFRESH_TOKEN`
+
+Chrome Web Store copy, privacy declarations, reviewer instructions, and
+distribution choices live in `ext/store/listing.md`. The public privacy policy is
+[parallax.akshith.io/privacy](https://parallax.akshith.io/privacy).
+
+The website resolves its download buttons from the latest published GitHub
 Release, so releases do not require hardcoded website changes.
+
+## License and credits
+
+Parallax is MIT licensed. See [LICENSE](LICENSE).
+
+The desktop interface is adapted from the MIT-licensed
+[T3 Code](https://github.com/pingdotgg/t3code) interface by T3 Tools Inc. The
+workspace layout, message log, composer, and surrounding chrome started there;
+the workspace protocol, browser bridge, and release pipeline are Parallax's own.
+The upstream notice is reproduced in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

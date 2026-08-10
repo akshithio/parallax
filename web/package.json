@@ -6,7 +6,6 @@
   "license": "MIT",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.8.1",
   "scripts": {
     "dev": "vercel dev",
     "preview": "node scripts/preview.js",
