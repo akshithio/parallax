@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "Parallax desktop workspace, browser bridge, and website",
   "author": "Akshith Chowdary",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.8.1",
   "pnpm": {

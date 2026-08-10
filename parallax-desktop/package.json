@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "Desktop workspace for Parallax",
   "author": "Akshith Chowdary",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@10.8.1",
   "main": "main.js",

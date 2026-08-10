@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "Chrome bridge for Parallax",
   "author": "Akshith Chowdary",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "test:syntax": "node --check src/background.js && node --check src/content.js && node --check src/inject.js && node --check src/popup.js && node --check src/protocol-core.js",

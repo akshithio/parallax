@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "Download website for Parallax",
   "author": "Akshith Chowdary",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.8.1",

@@ -10,6 +10,10 @@ and product website.
 - `parallax-extension` — Chrome extension that connects ChatGPT to the desktop app
 - `parallax-website` — download website deployed on Vercel
 
+## Licence
+
+Parallax is MIT licensed. See [LICENSE](LICENSE).
+
 ## Credits
 
 Parallax's desktop app is an adaptation of the [T3 Code](https://github.com/pingdotgg/t3code)
