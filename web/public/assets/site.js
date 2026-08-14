@@ -1,9 +1,3 @@
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '';
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${Math.round(bytes / 1024 / 1024)} MB`;
-}
-
 function formatDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -15,16 +9,6 @@ function formatDate(value) {
   });
 }
 
-function setText(selector, value) {
-  const node = document.querySelector(selector);
-  if (node && value) node.textContent = value;
-}
-
-function markPending(selector) {
-  const node = document.querySelector(selector);
-  if (node) node.textContent = 'Pending';
-}
-
 async function hydrateRelease() {
   const status = document.querySelector('[data-release-state]');
   try {
@@ -34,22 +18,15 @@ async function hydrateRelease() {
     const release = await response.json();
     if (!release.available) {
       status.textContent = 'First signed release coming soon';
-      markPending('[data-release-macos-size]');
       return;
     }
 
-    const macos = release.downloads?.macos;
     status.textContent = [
       release.version ? `Version ${release.version}` : '',
       formatDate(release.publishedAt),
     ].filter(Boolean).join(' · ') || 'Latest release';
-
-    const macosSize = formatBytes(macos?.size);
-    if (macosSize) setText('[data-release-macos-size]', macosSize);
-    else markPending('[data-release-macos-size]');
   } catch {
     status.textContent = 'View the latest release on GitHub';
-    markPending('[data-release-macos-size]');
   }
 }
 

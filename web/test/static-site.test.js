@@ -27,7 +27,9 @@ test('publishes stable download and repository links', () => {
 test('uses the concise site title and the published extension flow', () => {
   assert.match(html, /<title>Parallax<\/title>/);
   assert.match(html, /<meta property="og:title" content="Parallax">/);
-  assert.match(html, /Installed from the Chrome Web Store/);
+  assert.match(html, /Your local workspace/);
+  assert.doesNotMatch(html, /One workspace instead of a browser tab and a terminal/);
+  assert.doesNotMatch(html, /What you download|Install once, then let it update/);
   assert.doesNotMatch(html, /Unpacked \.zip|developer mode|load the unpacked/i);
   assert.deepEqual(vercelConfig.redirects.find(({ source }) => source === '/download/extension'), {
     source: '/download/extension',
