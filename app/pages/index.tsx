@@ -11,9 +11,16 @@ import { VSCodeIcon, CursorIcon, ZedIcon, IntelliJIcon, FinderIcon } from '../co
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { cn } from '../lib/utils'
 import ComposerBanner from '../components/ComposerBanner'
+import Onboarding, {
+  CHROME_WEB_STORE_URL,
+  ONBOARDING_STORAGE_KEY,
+  type OnboardingStep,
+} from '../components/Onboarding'
 
 export default function Home() {
   const w = useParallax()
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | 'loading' | null>('loading')
+  const onboardingResolved = useRef(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [commandOpen, setCommandOpen] = useState(false)
   const [rightPanelOpen, setRightPanelOpen] = useState(false)
@@ -31,6 +38,45 @@ export default function Home() {
   const [openInOpen, setOpenInOpen] = useState(false)
   const openInRef = useRef<HTMLDivElement>(null)
   const dragCounter = useRef(0)
+
+  useEffect(() => {
+    if (!w.dataLoaded || onboardingResolved.current) return
+    onboardingResolved.current = true
+    let stored = ''
+    try { stored = localStorage.getItem(ONBOARDING_STORAGE_KEY) || '' } catch {}
+    if (stored === 'complete') {
+      setOnboardingStep(null)
+      return
+    }
+    if (stored === 'welcome' || stored === 'extension' || stored === 'project' || stored === 'message') {
+      setOnboardingStep(stored)
+      return
+    }
+    if (w.projects.length > 0 || w.convOrder.length > 0) {
+      try { localStorage.setItem(ONBOARDING_STORAGE_KEY, 'complete') } catch {}
+      setOnboardingStep(null)
+      return
+    }
+    setOnboardingStep('welcome')
+  }, [w.dataLoaded, w.projects.length, w.convOrder.length])
+
+  const persistOnboardingStep = useCallback((step: OnboardingStep) => {
+    try { localStorage.setItem(ONBOARDING_STORAGE_KEY, step) } catch {}
+  }, [])
+
+  const completeOnboarding = useCallback(() => {
+    try { localStorage.setItem(ONBOARDING_STORAGE_KEY, 'complete') } catch {}
+    setOnboardingStep(null)
+    requestComposerFocus()
+  }, [])
+
+  const openChromeWebStore = useCallback(async () => {
+    if (window.parallax?.previewOpenExternal) {
+      await window.parallax.previewOpenExternal(CHROME_WEB_STORE_URL)
+      return
+    }
+    window.open(CHROME_WEB_STORE_URL, '_blank', 'noopener,noreferrer')
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -51,6 +97,7 @@ export default function Home() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (onboardingStep !== null) return
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         setCommandOpen(v => !v)
@@ -92,7 +139,7 @@ export default function Home() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [onboardingStep])
 
   const handleFiles = useCallback(
     async (files: FileList) => {
@@ -306,6 +353,36 @@ export default function Home() {
     ]
   }, [sidebarOpen, terminalOpen, rightPanelOpen, rightSurface, currentFolder, primaryOption, handleOpen, w])
 
+  if (onboardingStep === 'loading') {
+    return <div className="h-screen bg-background" aria-hidden />
+  }
+
+  if (onboardingStep) {
+    return (
+      <Onboarding
+        initialStep={onboardingStep}
+        connected={w.wsStatus.status === 'connected'}
+        serverReady={w.serverStatus.status === 'listening'}
+        currentFolder={currentFolder}
+        currentConvId={w.currentConvId}
+        onOpenStore={openChromeWebStore}
+        onCheckConnection={() => window.parallax?.ready?.()}
+        onChooseProject={w.addProject}
+        onSendFirstMessage={(message) =>
+          w.send(
+            message,
+            w.gptModel,
+            w.intelligenceLevel || undefined,
+          )
+        }
+        onComplete={completeOnboarding}
+        onStepChange={(step) => {
+          persistOnboardingStep(step)
+          setOnboardingStep(step)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="relative isolate flex h-screen overflow-hidden bg-background text-foreground max-md:flex-col">
@@ -525,9 +602,9 @@ export default function Home() {
               onEditMessage={w.currentConversationSending ? undefined : w.editMessage}
             />
 
-            {/* Composer banners — a Codex-style stack sitting flush above the input,
-                same width as it. Connection state warns (amber) instead of forcing a
-                new chat; runtime errors show red. */}
+            {/* Composer banners sit flush above the input at the same width.
+                Connection state warns (amber) instead of forcing a new chat;
+                runtime errors show red. */}
             {(w.extensionDisconnected || w.errorMessage) && (
               <div className="chat-composer-horizontal-inset shrink-0 pb-1.5">
                 {/* Same width + centering as the InputBar <form> below, so the bars
@@ -538,8 +615,8 @@ export default function Home() {
                       tone="warning"
                       title="Extension not connected"
                       detail={
-                        w.queuedNotice
-                          ? 'Your message is queued — it’ll send automatically the moment the Parallax extension reconnects.'
+                        w.currentQueuedMessageCount > 0
+                          ? 'Queued messages will send automatically when the Parallax extension reconnects.'
                           : 'Open ChatGPT and check the Parallax extension. You can keep typing here — messages send as soon as it reconnects.'
                       }
                     />
@@ -551,8 +628,7 @@ export default function Home() {
             <div className="chat-composer-horizontal-inset shrink-0 pb-3 pt-1 sm:pb-4">
               <InputBar
                 sending={w.currentConversationSending}
-                queueing={w.sending}
-                queuedCount={w.currentQueuedMessageCount}
+                queueing={w.sending || w.wsStatus.status === 'disconnected'}
                 queuedMessages={w.currentQueuedMessages}
                 currentConvId={w.currentConvId}
                 onSend={w.send}

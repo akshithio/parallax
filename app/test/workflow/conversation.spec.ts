@@ -307,7 +307,7 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
   expect(Math.abs(settledThinkingLabel!.y - thinkingLabelMetrics.top)).toBeLessThanOrEqual(0.5)
 
   const firstActionTurn =
-    '{plx:note}Reading the repository structure{/plx:note}\n' +
+    '{plx:note}I’m going to inspect the repository structure first to find its main entry points.{/plx:note}\n' +
     '{plx:run}pwd{/plx:run}\n' +
     '{plx:run}ls -la{/plx:run}'
   const executionsBeforeActionStream = await page.evaluate(
@@ -320,6 +320,9 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
   })
 
   const structurePhase = page.getByRole('button', { name: 'Reading the repository structure' })
+  await expect(
+    page.getByText('I’m going to inspect the repository structure first to find its main entry points.'),
+  ).toBeVisible()
   await expect(structurePhase).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByLabel('Thinking')).toHaveCount(0)
   await expect(page.getByText('pwd', { exact: true })).toHaveCount(0)
@@ -414,14 +417,17 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
     convId: CONV_ID,
     url: CHAT_URL,
     text:
-      '{plx:note}Tracing message delivery{/plx:note}\n' +
+      '{plx:note}I found the entry points. Next I’m tracing how messages move through the app.{/plx:note}\n' +
       '{plx:read path="package.json" /}\n' +
       '{plx:list path="components" /}',
   })
 
   const deliveryPhase = page.getByRole('button', {
-    name: 'Tracing message delivery',
+    name: 'Reading project files',
   })
+  await expect(
+    page.getByText('I found the entry points. Next I’m tracing how messages move through the app.'),
+  ).toBeVisible()
   await expect(deliveryPhase).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByLabel('Thinking')).toHaveCount(0)
   await expect(page.locator('[data-activity-stream]')).toHaveCount(1)
@@ -442,6 +448,10 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
   const finalAnswer =
     'The desktop routes each task through its own browser conversation and renders action rounds as an ordered transcript.'
   await expect(page.getByText(finalAnswer)).toBeVisible()
+  const turnFold = page.locator('[data-turn-fold]')
+  await expect(turnFold).toHaveCount(1)
+  await expect(turnFold.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.locator('[data-activity-stream]')).toHaveCount(0)
   const answerMetrics = await transcriptMetrics(
     page.locator('.parallax-transcript-copy').filter({ hasText: finalAnswer }),
   )
@@ -455,7 +465,7 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
   })
   expect(Math.abs(answerCopyMetrics.left - thinkingLabelMetrics.left)).toBeLessThanOrEqual(1)
   expect(answerCopyMetrics.fontWeight).toBe(thinkingLabelMetrics.fontWeight)
-  const activityBottom = await page.locator('[data-activity-stream]').evaluate((element) =>
+  const activityBottom = await turnFold.evaluate((element) =>
     element.getBoundingClientRect().bottom,
   )
   expect(answerCopyMetrics.top - activityBottom).toBeLessThanOrEqual(16)
@@ -464,11 +474,16 @@ test('runs a naturally ordered two-round repository workflow', async ({ page }) 
   await expect(page.getByText(/Command details/i)).toHaveCount(0)
   await expect(page.getByText(/can't parse/i)).toHaveCount(0)
 
+  const collapsedTranscript = await page.locator('body').innerText()
+  expect(collapsedTranscript.indexOf('Worked')).toBeLessThan(
+    collapsedTranscript.indexOf(finalAnswer),
+  )
+  await turnFold.getByRole('button').click()
   const visibleTranscript = await page.locator('body').innerText()
   expect(visibleTranscript.indexOf('Reading the repository structure')).toBeLessThan(
-    visibleTranscript.indexOf('Tracing message delivery'),
+    visibleTranscript.indexOf('Reading project files'),
   )
-  expect(visibleTranscript.indexOf('Tracing message delivery')).toBeLessThan(
+  expect(visibleTranscript.indexOf('Reading project files')).toBeLessThan(
     visibleTranscript.indexOf(finalAnswer),
   )
   const workflowExecutions = await page.evaluate(() =>

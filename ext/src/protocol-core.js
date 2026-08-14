@@ -7,13 +7,26 @@
     if (!rawUrl || typeof rawUrl !== 'string') return null;
     try {
       const url = new URL(rawUrl);
-      const match = /^\/c\/([^/?#]+)/.exec(url.pathname);
+      const match = /^\/(?:g\/g-p-[^/?#]+\/)?c\/([^/?#]+)/.exec(url.pathname);
       if (!match) return null;
       const id = decodeURIComponent(match[1]);
       // ChatGPT briefly uses /c/WEB:<uuid> while a new conversation is being
       // canonicalized. It is a transition marker, not a durable conversation id.
       if (!id || /^WEB:/i.test(id)) return null;
       return id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function projectUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return null;
+    try {
+      const url = new URL(rawUrl);
+      if (!['chatgpt.com', 'chat.openai.com'].includes(url.hostname)) return null;
+      const match = /^\/g\/(g-p-[^/?#]+)\/project(?:\/|$)/.exec(url.pathname);
+      if (!match) return null;
+      return `https://chatgpt.com/g/${encodeURIComponent(match[1])}/project`;
     } catch (_) {
       return null;
     }
@@ -103,5 +116,5 @@
     return events;
   }
 
-  return { conversationId, streamEvents };
+  return { conversationId, projectUrl, streamEvents };
 });

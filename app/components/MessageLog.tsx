@@ -276,7 +276,7 @@ function ToolCallsCard({ toolCalls }: { toolCalls: string }) {
 
 function AgentNote({ text }: { text: string }) {
   return (
-    <div className="mb-2 text-foreground">
+    <div className="parallax-agent-note text-foreground" data-agent-note>
       <Markdown text={text} />
     </div>
   )
@@ -534,19 +534,21 @@ function ToolStatusDot({ status }: { status: AgentCall['status'] }) {
 }
 
 // ── Ordered activity transcript ─────────────────────────────────────────────
-// Consecutive action turns belong to one compact activity stream. Notes become
-// phase titles, and the calls they introduce stay nested beneath that title.
+// Consecutive action turns belong to one compact activity stream. Notes remain
+// visible commentary, and the calls they introduce stay nested beneath a label.
 type WorkItem = { kind: 'note'; text: string } | { kind: 'call'; call: AgentCall }
 
 interface ActivityPhase {
   key: string
   label: string
+  notes: string[]
   calls: AgentCall[]
 }
 
 type TimelineRow =
   | { kind: 'message'; msg: Message; key: string }
   | { kind: 'activity'; phases: ActivityPhase[]; key: string }
+  | { kind: 'turn-fold'; phases: ActivityPhase[]; key: string; label: string }
 
 // A turn that is purely tool calls — no prose for the user to read.
 function isToolOnlyTurn(m: Message): boolean {
@@ -611,54 +613,6 @@ function splitWorkSections(items: WorkItem[]): WorkSection[] {
   return sections
 }
 
-const LEGACY_PHASE_VERBS: Record<string, string> = {
-  analyze: 'Analyzing',
-  change: 'Changing',
-  check: 'Checking',
-  compare: 'Comparing',
-  confirm: 'Confirming',
-  examine: 'Examining',
-  explore: 'Exploring',
-  find: 'Finding',
-  gather: 'Gathering',
-  identify: 'Identifying',
-  inspect: 'Inspecting',
-  locate: 'Locating',
-  map: 'Mapping',
-  read: 'Reading',
-  review: 'Reviewing',
-  run: 'Running',
-  search: 'Searching',
-  test: 'Testing',
-  trace: 'Tracing',
-  understand: 'Understanding',
-  update: 'Updating',
-  verify: 'Verifying',
-}
-
-function normalizePhaseTitle(note: string): string {
-  let title = note.trim().replace(/\s+/g, ' ')
-  if (!title) return ''
-
-  const intent = title.match(/(?:^|[;.!]\s+)(?:I['’]ll|I will)\s+(.+)$/i)
-  if (intent) title = intent[1]
-  title = title
-    .replace(/^(?:I['’]ll|I will)\s+/i, '')
-    .replace(/\s+(?:first|next|now)\.?$/i, '')
-    .replace(/[.!]+$/, '')
-
-  if (/\bmap(?:ping)?\b.*\b(?:project|repository|workspace|top-level|structure)\b/i.test(title)) {
-    return 'Reading the repository structure'
-  }
-
-  const verb = title.match(/^([a-z]+)\b/i)
-  const replacement = verb && LEGACY_PHASE_VERBS[verb[1].toLowerCase()]
-  if (replacement) {
-    title = `${replacement}${title.slice(verb![0].length)}`
-  }
-  return title.charAt(0).toUpperCase() + title.slice(1)
-}
-
 function fallbackPhaseTitle(calls: AgentCall[]): string {
   const labels = calls.map((call) => `${call.kind} ${call.label}`.toLowerCase()).join('\n')
   if (calls.some((call) => call.kind === 'write')) return 'Updating project files'
@@ -694,13 +648,28 @@ function appendUniqueCalls(target: AgentCall[], calls: AgentCall[]) {
   }
 }
 
+function appendUniqueNotes(target: string[], notes: string[]) {
+  const known = new Set(target)
+  for (const note of notes) {
+    if (known.has(note)) continue
+    known.add(note)
+    target.push(note)
+  }
+}
+
+function continuesExistingPhase(current: ActivityPhase, next: ActivityPhase): boolean {
+  if (current.label !== next.label) return false
+  if (!next.notes.length) return true
+  return next.notes.every((note) => current.notes.includes(note))
+}
+
 function phasesForTurn(m: Message, rowKey: string): ActivityPhase[] {
   return splitWorkSections(turnItems(m)).flatMap((section, index) => {
     if (!section.calls.length) return []
-    const lastNote = section.notes[section.notes.length - 1] || ''
     return [{
       key: `${rowKey}-phase-${index}`,
-      label: normalizePhaseTitle(lastNote) || fallbackPhaseTitle(section.calls),
+      label: fallbackPhaseTitle(section.calls),
+      notes: [...section.notes],
       calls: [...section.calls],
     }]
   })
@@ -730,21 +699,36 @@ function hasAssistantProgress(message: Message): boolean {
   )
 }
 
+function messageStartedAt(message: Message): number | null {
+  if (!message.msgId) return null
+  const timestamp = Number(message.msgId.split('-', 1)[0])
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null
+}
+
+function completedWorkLabel(startedAt: number | null, completedAt?: number): string {
+  if (!startedAt || !completedAt || completedAt < startedAt) return 'Worked'
+  return `Worked for ${formatElapsed(Math.floor((completedAt - startedAt) / 1000))}`
+}
+
 function buildTimelineRows(messages: Message[]): TimelineRow[] {
   const rows: TimelineRow[] = []
   const visibleMessages = visibleTranscriptMessages(messages)
+  let turnStartedAt: number | null = null
   for (let i = 0; i < visibleMessages.length; i++) {
     const m = visibleMessages[i]
     const originalIndex = messages.indexOf(m)
     const messageKey = m.msgId || `legacy:${originalIndex}`
+    if (m.role === 'user') turnStartedAt = messageStartedAt(m)
     if (isToolOnlyTurn(m)) {
       const phases = phasesForTurn(m, messageKey)
       const previous = rows[rows.length - 1]
       if (previous?.kind === 'activity') {
         for (const phase of phases) {
           const lastPhase = previous.phases[previous.phases.length - 1]
-          if (lastPhase?.label === phase.label) appendUniqueCalls(lastPhase.calls, phase.calls)
-          else previous.phases.push(phase)
+          if (lastPhase && continuesExistingPhase(lastPhase, phase)) {
+            appendUniqueNotes(lastPhase.notes, phase.notes)
+            appendUniqueCalls(lastPhase.calls, phase.calls)
+          } else previous.phases.push(phase)
         }
       } else {
         rows.push({ kind: 'activity', phases, key: `activity-${messageKey}` })
@@ -754,6 +738,19 @@ function buildTimelineRows(messages: Message[]): TimelineRow[] {
     // A recovered half-tag between completed action turns is transport debris,
     // not a separate response. Keep a trailing one visible as an interruption.
     if (isIncompleteProtocolTurn(m) && i < visibleMessages.length - 1) continue
+    const previous = rows[rows.length - 1]
+    if (
+      m.role === 'assistant' &&
+      !m.streaming &&
+      previous?.kind === 'activity'
+    ) {
+      rows[rows.length - 1] = {
+        kind: 'turn-fold',
+        phases: previous.phases,
+        key: `turn-fold-${previous.key}`,
+        label: completedWorkLabel(turnStartedAt, m.completedAt),
+      }
+    }
     rows.push({ kind: 'message', msg: m, key: messageKey })
   }
   return rows
@@ -769,7 +766,7 @@ function sectionStatus(calls: AgentCall[]): AgentCall['status'] {
 }
 
 function ActivityPhaseView({ phase, active }: { phase: ActivityPhase; active: boolean }) {
-  const { label, calls } = phase
+  const { label, notes, calls } = phase
   const [expanded, setExpanded] = useState(false)
   return (
     <section
@@ -778,6 +775,13 @@ function ActivityPhaseView({ phase, active }: { phase: ActivityPhase; active: bo
       data-activity-phase
       data-active={active ? 'true' : 'false'}
     >
+      {notes.length > 0 && (
+        <div className="flex flex-col gap-2 pb-1.5" data-activity-commentary>
+          {notes.map((note, index) => (
+            <AgentNote key={`${phase.key}-note-${index}`} text={note} />
+          ))}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
@@ -837,6 +841,47 @@ function ActivityGroup({
           />
         ))}
       </div>
+    </div>
+  )
+}
+
+function TurnFold({
+  phases,
+  label,
+}: {
+  phases: ActivityPhase[]
+  label: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="border-b border-border/60 pb-2 pt-1" data-turn-fold>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+        className="parallax-turn-fold-label flex cursor-pointer select-none items-center gap-1 rounded-md px-1 tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      >
+        <span>{label}</span>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={cn('size-3.5 transition-transform duration-150', expanded && 'rotate-90')}
+          aria-hidden
+        >
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="pt-1.5">
+          <ActivityGroup phases={phases} active={false} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1050,6 +1095,13 @@ export default function MessageLog({ conversation, sending, onEditMessage }: Pro
                   phases={row.phases}
                   active={active}
                 />
+              </div>
+            )
+          }
+          if (row.kind === 'turn-fold') {
+            return (
+              <div key={row.key} className="parallax-transcript-enter mb-2.5 w-full px-1">
+                <TurnFold phases={row.phases} label={row.label} />
               </div>
             )
           }

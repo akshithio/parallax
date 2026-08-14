@@ -29,19 +29,28 @@ test('workspace protocol stays compact', () => {
   // both directions, so the three characters are worth more than the branding.
   assert.ok(prompt.SYSTEM_PROMPT.length < 3000);
   const wire = prompt.composeWireMessage('Inspect this repository.', 'example-project');
-  assert.match(wire, /^\{plx:task\}\nInspect this repository\.\n\{\/plx:task\}/);
+  assert.ok(wire.startsWith(`{plx:task}
+Inspect this repository.
+{/plx:task}`));
+  assert.equal(wire.includes(String.fromCharCode(92, 110)), false);
+  assert.equal(wire.codePointAt('{plx:task}'.length), 10);
   assert.match(wire, /workspace root is \*\*"example-project"\*\*/);
   assert.match(wire, /not a read boundary/);
   assert.match(wire, /ls \.\.\/repo/);
   assert.match(wire, /approval="required"/);
+  assert.match(wire, /visible commentary to the user/);
+  assert.match(wire, /natural first-person sentence/);
+  assert.match(wire, /followed immediately by 1–4 related action tags/);
+  assert.doesNotMatch(wire, /note becomes the activity label/);
+  assert.doesNotMatch(wire, /Use 3–7 words, no pronoun/);
   assert.match(wire, /Other local paths explicitly named in the current task are in scope/);
   assert.doesNotMatch(wire, /Never use absolute paths or "\.\."/);
 });
 
-test('plain greetings do not bootstrap the workspace protocol', () => {
-  assert.equal(prompt.needsHarnessBootstrap('hi'), false);
-  assert.equal(prompt.needsHarnessBootstrap('Hello!'), false);
-  assert.equal(prompt.needsHarnessBootstrap('how are you?'), false);
-  assert.equal(prompt.needsHarnessBootstrap('hi, inspect this repository'), true);
-  assert.equal(prompt.needsHarnessBootstrap('hi', 'attached context'), true);
+test('the first message carries the workspace protocol regardless of its text', () => {
+  const wire = prompt.composeWireMessage('hi', 'example-project');
+  assert.ok(wire.startsWith(`{plx:task}
+hi
+{/plx:task}`));
+  assert.match(wire, /You are Parallax's planner in a desktop coding harness/);
 });

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { conversationId, streamEvents } = require('../src/protocol-core');
+const { conversationId, projectUrl, streamEvents } = require('../src/protocol-core');
 
 test('conversationId ignores new-chat and temporary WEB routes', () => {
   assert.equal(conversationId('https://chatgpt.com/'), null);
@@ -15,6 +15,25 @@ test('conversationId returns the complete canonical route segment', () => {
     conversationId('https://chatgpt.com/c/6a62954e-9984-83ea-a025-99acc61ce4cc'),
     '6a62954e-9984-83ea-a025-99acc61ce4cc',
   );
+  assert.equal(
+    conversationId(
+      'https://chatgpt.com/g/g-p-67710a876dac8191bd024ba6d5725bb8/c/project-chat-id',
+    ),
+    'project-chat-id',
+  );
+});
+
+test('projectUrl canonicalizes ChatGPT Project routes only', () => {
+  assert.equal(
+    projectUrl('https://chatgpt.com/g/g-p-67710a876dac8191bd024ba6d5725bb8/project'),
+    'https://chatgpt.com/g/g-p-67710a876dac8191bd024ba6d5725bb8/project',
+  );
+  assert.equal(
+    projectUrl('https://chat.openai.com/g/g-p-67710a876dac8191bd024ba6d5725bb8/project/settings'),
+    'https://chatgpt.com/g/g-p-67710a876dac8191bd024ba6d5725bb8/project',
+  );
+  assert.equal(projectUrl('https://chatgpt.com/c/conversation-id'), null);
+  assert.equal(projectUrl('https://example.com/g/g-p-fake/project'), null);
 });
 
 test('streamEvents unwraps array and nested payload envelopes in order', () => {

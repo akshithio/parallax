@@ -1,6 +1,7 @@
 app/.next/
 app/.next-build/
 app/.next-test/
+app/.next-dev-*/
 app/out/
 app/dist/
 app/node_modules/

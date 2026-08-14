@@ -104,8 +104,23 @@ describe('workspace surfaces', () => {
             chatgptUrl: null,
             folderPath: '/tmp/test-folder',
           },
+          'thread-archived': {
+            id: 'thread-archived',
+            title: 'Archived chat',
+            messages: [{ role: 'user', text: 'Archived' }],
+            chatgptUrl: null,
+            folderPath: '/tmp/test-folder',
+            archived: true,
+          },
+          'empty-draft': {
+            id: 'empty-draft',
+            title: 'New chat',
+            messages: [],
+            chatgptUrl: null,
+            folderPath: '/tmp/test-folder',
+          },
         }}
-        convOrder={['thread-a', 'thread-b']}
+        convOrder={['thread-a', 'thread-b', 'thread-archived', 'empty-draft']}
         projects={['/tmp/test-folder']}
         currentConvId="thread-a"
         workingConversationIds={new Set()}
@@ -458,13 +473,15 @@ describe('workspace surfaces', () => {
   test('queues a drafted message while the current task is working', async () => {
     const user = userEvent.setup()
     const onSend = vi.fn()
-    const onEditQueuedMessage = vi.fn(() => 'Queued draft')
+    const onEditQueuedMessage = vi.fn(() => true)
     const onDeleteQueuedMessage = vi.fn()
     render(
       <InputBar
         sending
-        queuedCount={1}
-        queuedMessages={[{ id: 'queued-1', text: 'Queued draft' }]}
+        queuedMessages={[
+          { id: 'queued-1', text: 'Queued draft' },
+          { id: 'queued-2', text: 'Another queued draft' },
+        ]}
         currentConvId="thread-b"
         onSend={onSend}
         onEditQueuedMessage={onEditQueuedMessage}
@@ -485,18 +502,22 @@ describe('workspace surfaces', () => {
     )
     expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Queue message' })).not.toBeInTheDocument()
-    expect(screen.getByText('1 message queued')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-queued-message-row]')).toHaveLength(2)
+    expect(screen.getByText('Queued draft')).toBeInTheDocument()
+    expect(screen.getByText('Another queued draft')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Delete queued message' }))
-    expect(onDeleteQueuedMessage).toHaveBeenCalledWith('queued-1')
+    await user.click(screen.getByRole('button', { name: 'Edit queued message 1' }))
+    const queuedEditor = screen.getByRole('textbox', { name: 'Queued message 1' })
+    await user.clear(queuedEditor)
+    await user.type(queuedEditor, 'Revised queued draft')
+    await user.click(screen.getByRole('button', { name: 'Save queued message 1' }))
+    expect(onEditQueuedMessage).toHaveBeenCalledWith('queued-1', 'Revised queued draft')
+    expect(composer).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Edit queued message' }))
-    expect(onEditQueuedMessage).toHaveBeenCalledWith('queued-1')
-    expect(composer).toHaveValue('Queued draft')
-    expect(screen.queryByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Queue message' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete queued message 2' }))
+    expect(onDeleteQueuedMessage).toHaveBeenCalledWith('queued-2')
 
-    await user.clear(composer)
     await user.type(
       composer,
       'Draft for this task',

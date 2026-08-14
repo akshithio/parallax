@@ -28,6 +28,10 @@ interface Group {
   threads: Conversation[]
 }
 
+function isSidebarChat(conversation: Conversation | undefined): conversation is Conversation {
+  return Boolean(conversation && !conversation.archived && conversation.messages.length > 0)
+}
+
 type CtxMenu =
   | { type: 'thread'; x: number; y: number; convId: string }
   | { type: 'project'; x: number; y: number; path: string | null }
@@ -138,8 +142,7 @@ export default function Sidebar({
     const ungroupedThreads: Conversation[] = []
     for (const id of convOrder) {
       const c = conversations[id]
-      if (!c || c.messages.length === 0) continue
-      if (c.archived) continue
+      if (!isSidebarChat(c)) continue
       if (c.folderPath) {
         if (!byPath.has(c.folderPath)) byPath.set(c.folderPath, [])
         byPath.get(c.folderPath)!.push(c)
@@ -210,7 +213,10 @@ export default function Sidebar({
       type: 'remove-project',
       path,
       name: folderName(path),
-      chatCount: convOrder.filter(id => conversations[id]?.folderPath === path).length,
+      chatCount: convOrder.filter(id => {
+        const conversation = conversations[id]
+        return isSidebarChat(conversation) && conversation.folderPath === path
+      }).length,
     })
     setCtxMenu(null)
   }
@@ -236,7 +242,7 @@ export default function Sidebar({
   return (
     <>
       <div
-        className="relative flex shrink-0 flex-col border-r border-border bg-sidebar text-foreground max-md:!w-full max-md:max-h-52 max-md:border-r-0 max-md:border-b"
+        className="relative flex shrink-0 flex-col border-r border-border bg-sidebar text-foreground backdrop-blur-xl max-md:!w-full max-md:max-h-52 max-md:border-r-0 max-md:border-b"
         style={{ width: sidebarWidth }}
       >
         {/* Brand header */}

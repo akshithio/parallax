@@ -36,7 +36,7 @@ const OPEN = '{<‹⟨«〈＜〈'
 const CLOSE = '}>›⟩»〉＞〉'
 
 // Group 1 = tag, 2 = raw attrs, 3 = body (paired form only). \1 pairs the close
-// tag to its opener. The close allows stray whitespace (‹ / plx:run ›) because
+// tag to its opener. The close allows stray whitespace ({ / plx:run }) because
 // the model sometimes spaces it out.
 const TAG_RE = new RegExp(
   `[${OPEN}]\\s*plx:(note|read|list|search|run|write|done)\\b([^${CLOSE}]*?)` +
@@ -118,7 +118,7 @@ export function parseAgentActions(text: string): ParseResult {
 export interface ToolResult {
   status: 'ok' | 'error'
   content: string
-  /** For ‹plx:write›: a unified diff of the change, shown in the UI only (never
+  /** For {plx:write}: a unified diff of the change, shown in the UI only (never
    *  fed back to the model — it just needs the short confirmation in `content`). */
   diff?: string
 }
@@ -295,7 +295,7 @@ export function stripAgentTags(text: string): string {
   // never disagree about what's a tag. `O`/`C` are the char-class bodies.
   const O = OPEN
   const C = CLOSE
-  // A paired ‹plx:TAG›…‹/plx:TAG›. `tag` may be a literal ("done") or an
+  // A paired {plx:TAG}…{/plx:TAG}. `tag` may be a literal ("done") or an
   // alternation whose close backreferences \1 ("(note|read|…)").
   const paired = (tag: string) =>
     new RegExp(
@@ -304,13 +304,13 @@ export function stripAgentTags(text: string): string {
     )
   return (
     text
-      // ‹plx:done›…final answer…‹/plx:done› — UNWRAP: keep the answer, drop the tag.
+      // {plx:done}…final answer…{/plx:done} unwraps to the answer text.
       .replace(paired('done'), '$1')
-      // ‹plx:result›… blocks are the harness's; if echoed into the answer, drop them.
+      // {plx:result} blocks belong to the harness; drop them if echoed in the answer.
       .replace(paired('result'), '')
       .replace(paired('(note|read|list|search|run|write)'), '')
       .replace(new RegExp(`[${O}]\\s*plx:(?:note|read|list|search|run|write|done)\\b[^${C}]*\\/[${C}]`, 'g'), '')
-      // STREAMING: ‹plx:done› opened but hasn't closed yet — unwrap the partial
+      // While {plx:done} is still streaming, unwrap the partial answer.
       // answer so it renders token-by-token instead of appearing all at once.
       .replace(new RegExp(`[${O}]\\s*plx:done\\b[^${C}]*[${C}]([\\s\\S]*)$`), '$1')
       // An action opener whose closing tag never arrived is protocol, not prose.

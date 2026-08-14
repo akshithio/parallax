@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────
-   Theme tokens — ported 1:1 from T3 Code (apps/web/src/index.css).
+   Theme tokens adapted from T3 Code (apps/web/src/index.css).
    Light is the base (:root); .dark overrides. The desktop app
    defaults to .dark (applied in _document.tsx).
    ───────────────────────────────────────────────────────────── */
@@ -43,7 +43,7 @@
   --parallax-activity-title: #3f3f3f;
   --parallax-activity-command: #4a4a4a;
   --parallax-activity-secondary: #5f6368;
-  --parallax-activity-tertiary: #6f747a;
+  --parallax-activity-tertiary: #666b71;
   --parallax-activity-rule: #b9c1cb;
   --parallax-activity-hover: #f3f4f6;
   --parallax-tool-output: #303844;
@@ -62,7 +62,7 @@
 
   color-scheme: light;
   --radius: 0.625rem;
-  --background: var(--color-white);
+  --background: var(--color-neutral-100);
   --app-chrome-background: var(--background);
   --foreground: var(--color-neutral-800);
   --card: var(--color-white);
@@ -88,7 +88,7 @@
   --success-foreground: var(--color-emerald-700);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
-  --sidebar: var(--background);
+  --sidebar: rgba(255, 255, 255, 0.82);
 }
 
 .dark {
@@ -119,7 +119,7 @@
   --success-foreground: var(--color-emerald-400);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-400);
-  --sidebar: var(--background);
+  --sidebar: rgba(255, 255, 255, 0.045);
   --parallax-activity-title: color-mix(in srgb, var(--foreground) 82%, var(--background));
   --parallax-activity-command: color-mix(in srgb, var(--foreground) 82%, var(--background));
   --parallax-activity-secondary: color-mix(in srgb, var(--muted-foreground) 70%, var(--background));
@@ -162,15 +162,11 @@ html {
 body {
   background-color: var(--app-chrome-background);
   color: var(--foreground);
-  font-family: 'DM Sans Variable', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
   position: relative;
-}
-
-.parallax-main-panel {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
 /* Grain overlay — matches T3 Code */
@@ -323,6 +319,56 @@ code {
   color: var(--parallax-activity-title);
 }
 
+.parallax-turn-fold-label {
+  color: var(--muted-foreground);
+  font-size: var(--parallax-transcript-font-size);
+  font-weight: 450;
+  line-height: var(--parallax-transcript-line-height);
+}
+
+.parallax-onboarding-shell {
+  box-shadow:
+    0 30px 90px color-mix(in srgb, var(--foreground) 7%, transparent),
+    0 2px 8px color-mix(in srgb, var(--foreground) 3%, transparent);
+  animation: parallax-onboarding-shell-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.parallax-onboarding-step {
+  animation: parallax-onboarding-step-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.parallax-onboarding-route::before {
+  content: '';
+  position: absolute;
+  left: 1.34rem;
+  top: 3rem;
+  bottom: 3rem;
+  width: 1px;
+  background: var(--border);
+}
+
+@keyframes parallax-onboarding-shell-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes parallax-onboarding-step-enter {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .parallax-activity-row {
   min-height: var(--parallax-activity-row-height);
   padding-block: calc(
@@ -462,7 +508,7 @@ code {
 .parallax-approval-frame {
   width: calc(100% + 18px);
   max-width: min(calc(48rem + 18px), calc(100vw - 24px));
-  margin-inline: auto;
+  margin-inline: -9px;
   transform-origin: center bottom;
 }
 
@@ -470,6 +516,7 @@ code {
   .parallax-approval-frame {
     width: 100%;
     max-width: 48rem;
+    margin-inline: auto;
   }
 }
 
@@ -875,7 +922,7 @@ code {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Diff view — unified diff for ‹plx:write› actions.
+   Diff view for unified {plx:write} actions.
    ───────────────────────────────────────────────────────────── */
 .parallax-diff {
   margin: 0;

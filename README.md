@@ -28,7 +28,8 @@ flowchart LR
 1. A message starts in a Parallax project thread.
 2. The Electron process sends it to the extension over a local WebSocket on port
    `8765`.
-3. The extension creates or reuses that thread's inactive ChatGPT task tab.
+3. The extension creates or reuses a ChatGPT Project named `plx-{folder name}`,
+   then creates or reuses that thread's inactive task tab inside it.
 4. The extension submits the message and returns the streamed response to the
    matching desktop thread.
 5. Parallax runs allowed workspace actions and continues the turn until ChatGPT
@@ -40,7 +41,8 @@ model credentials and operates no developer data server.
 
 ## Features
 
-- Project folders with persistent, project-specific conversations
+- Project folders mirrored to ChatGPT Projects named `plx-{folder name}`
+- Persistent, project-specific conversations
 - Streaming responses and automatic workspace-action execution
 - Read, list, search, run, and write actions with configurable permissions
 - File attachments and drag-and-drop uploads
@@ -55,7 +57,7 @@ model credentials and operates no developer data server.
 - macOS
 - Node.js 18 or later
 - pnpm 10
-- Google Chrome with the Parallax extension installed
+- Google Chrome with the [Parallax extension](https://chromewebstore.google.com/detail/parallax/bfnlhalnojbjoipblfnhhljffajanaei?authuser=0&hl=en-GB) installed
 - A signed-in ChatGPT tab in the same Chrome profile
 
 ## Development
@@ -107,14 +109,14 @@ Chrome, a ChatGPT account, or a live extension connection.
 
 ## Workspace protocol
 
-The desktop app adds a compact workspace protocol to the first message in a
+The desktop app adds a compact workspace protocol to the first message in every
 thread. ChatGPT can request actions such as:
 
 ```text
-‹plx:list path="src" /›
-‹plx:read path="src/index.ts" /›
-‹plx:search query="TODO|FIXME" path="src" /›
-‹plx:run›pnpm test‹/plx:run›
+{plx:note}Inspecting the source{/plx:note}
+{plx:run}rg -n "TODO|FIXME" src{/plx:run}
+{plx:write path="src/example.ts"}entire file contents{/plx:write}
+{plx:done}The requested change is complete.{/plx:done}
 ```
 
 Permission checks are enforced before an action can change the selected project.
@@ -179,9 +181,9 @@ fail the release rather than publishing an unsigned build. Installed copies
 check the public GitHub Release feed and install a downloaded update when
 Parallax quits.
 
-After the first Chrome Web Store release is published manually, tagged releases
-can also upload the new extension package, submit it for review, and publish it
-after approval. Enable that step with the `CWS_AUTO_PUBLISH` repository variable,
+The extension is published on the [Chrome Web Store](https://chromewebstore.google.com/detail/parallax/bfnlhalnojbjoipblfnhhljffajanaei?authuser=0&hl=en-GB).
+Tagged releases can upload the new extension package, submit it for review, and
+publish it after approval. Enable that step with the `CWS_AUTO_PUBLISH` repository variable,
 set `CWS_PUBLISHER_ID` and `CWS_EXTENSION_ID`, and provide these repository
 secrets:
 
@@ -193,8 +195,8 @@ Chrome Web Store copy, privacy declarations, reviewer instructions, and
 distribution choices live in `ext/store/listing.md`. The public privacy policy is
 [parallax.akshith.io/privacy](https://parallax.akshith.io/privacy).
 
-The website resolves its download buttons from the latest published GitHub
-Release, so releases do not require hardcoded website changes.
+The website resolves its macOS download buttons from the latest published GitHub
+Release. Chrome installs and updates the extension through the Web Store.
 
 ## License and credits
 

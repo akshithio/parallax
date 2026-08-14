@@ -25,8 +25,8 @@ describe('MessageLog work transcript', () => {
             role: 'assistant',
             text: '',
             notes: [
-              'Reading project metadata',
-              'Tracing message delivery',
+              'I’m going to inspect the project metadata so I can identify the main entry points.',
+              'I found the entry points. Next I’m tracing how messages move through the app.',
             ],
             calls: [
               { kind: 'read', label: 'read package.json', status: 'ok', result: '{}' },
@@ -35,10 +35,16 @@ describe('MessageLog work transcript', () => {
               { kind: 'run', label: 'run ls -la', status: 'ok', result: 'package.json' },
             ],
             steps: [
-              { kind: 'note', text: 'Reading project metadata' },
+              {
+                kind: 'note',
+                text: 'I’m going to inspect the project metadata so I can identify the main entry points.',
+              },
               { kind: 'call', index: 0 },
               { kind: 'call', index: 1 },
-              { kind: 'note', text: 'Tracing message delivery' },
+              {
+                kind: 'note',
+                text: 'I found the entry points. Next I’m tracing how messages move through the app.',
+              },
               { kind: 'call', index: 2 },
               { kind: 'call', index: 3 },
             ],
@@ -47,8 +53,17 @@ describe('MessageLog work transcript', () => {
       />,
     )
 
-    const inspection = screen.getByRole('button', { name: 'Reading project metadata' })
-    const commands = screen.getByRole('button', { name: 'Tracing message delivery' })
+    const firstNote = screen.getByText(
+      'I’m going to inspect the project metadata so I can identify the main entry points.',
+    )
+    expect(firstNote.closest('[data-agent-note]')).toBeInTheDocument()
+    expect(firstNote.closest('[data-agent-note]')?.querySelector('.parallax-transcript-copy')).toBeInTheDocument()
+    expect(
+      screen.getByText('I found the entry points. Next I’m tracing how messages move through the app.'),
+    ).toBeInTheDocument()
+
+    const inspection = screen.getByRole('button', { name: 'Reading project files' })
+    const commands = screen.getByRole('button', { name: 'Reading the repository structure' })
     expect(inspection).toHaveAttribute('aria-expanded', 'false')
     expect(commands).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('package.json', { exact: true })).not.toBeInTheDocument()
@@ -93,7 +108,7 @@ describe('MessageLog work transcript', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Using the workspace tools' }))
+    await user.click(screen.getByRole('button', { name: 'Updating project files' }))
 
     const expectedTitles = {
       read: 'File read',
@@ -109,6 +124,40 @@ describe('MessageLog work transcript', () => {
     }
     expect(screen.getByText('pnpm test', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('run pnpm test', { exact: true })).not.toBeInTheDocument()
+  })
+
+  test('keeps each progress update attached to the action batch it introduces', () => {
+    render(
+      <MessageLog
+        conversation={conversation([
+          { role: 'user', text: 'Inspect the implementation.' },
+          {
+            role: 'assistant',
+            text: '',
+            notes: ['I’m going to read the entry point first so I can map the runtime flow.'],
+            calls: [{ kind: 'read', label: 'read src/index.ts', status: 'ok', result: 'export {}' }],
+          },
+          {
+            role: 'assistant',
+            text: '',
+            notes: ['I found the entry point. Next I’m reading the transport implementation.'],
+            calls: [{ kind: 'read', label: 'read src/transport.ts', status: 'ok', result: 'export {}' }],
+          },
+        ])}
+      />,
+    )
+
+    const phases = document.querySelectorAll('[data-activity-phase]')
+    expect(phases).toHaveLength(2)
+    expect(phases[0]).toHaveTextContent(
+      'I’m going to read the entry point first so I can map the runtime flow.',
+    )
+    expect(phases[0]).not.toHaveTextContent(
+      'I found the entry point. Next I’m reading the transport implementation.',
+    )
+    expect(phases[1]).toHaveTextContent(
+      'I found the entry point. Next I’m reading the transport implementation.',
+    )
   })
 
   test('keeps an individual command result collapsed when its diff arrives', async () => {
@@ -188,27 +237,56 @@ describe('MessageLog work transcript', () => {
     expect(screen.queryByText(/can't parse/i)).not.toBeInTheDocument()
   })
 
-  test('renders consecutive historical action rounds as a compact activity stream', () => {
+  test('folds completed activity beneath its duration while keeping the final answer visible', async () => {
+    const user = userEvent.setup()
+    const startedAt = 1784845644410
     const calls = (label: string): AgentCall[] => [
       { kind: 'run', label: `run ${label}`, status: 'ok', result: 'done' },
     ]
     render(
       <MessageLog
         conversation={conversation([
-          { role: 'user', text: 'Inspect the repository.' },
-          { role: 'assistant', text: '', calls: calls('ls -la') },
+          {
+            role: 'user',
+            text: 'Inspect the repository.',
+            msgId: `${startedAt}-turn`,
+          },
+          {
+            role: 'assistant',
+            text: '',
+            notes: ['I’m going to inspect the repository structure before reading its implementation.'],
+            calls: calls('ls -la'),
+          },
           { role: 'assistant', text: '', calls: calls('cat package.json') },
           { role: 'assistant', text: '', calls: calls('pnpm test') },
-          { role: 'assistant', text: 'The repository is healthy.' },
+          {
+            role: 'assistant',
+            text: 'The repository is healthy.',
+            completedAt: startedAt + 18_000,
+          },
         ])}
       />,
     )
 
-    expect(document.querySelectorAll('[data-activity-stream]')).toHaveLength(1)
+    const fold = screen.getByRole('button', { name: 'Worked for 18s' })
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    expect(fold).toHaveClass('parallax-turn-fold-label')
+    expect(fold).not.toHaveClass('text-xs')
+    expect(document.querySelectorAll('[data-activity-stream]')).toHaveLength(0)
+    expect(
+      screen.queryByText('I’m going to inspect the repository structure before reading its implementation.'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText('The repository is healthy.')).toBeInTheDocument()
+
+    await user.click(fold)
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
     expect(document.querySelectorAll('[data-activity-phase]')).toHaveLength(3)
     expect(screen.getByRole('button', { name: 'Reading the repository structure' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Working through the task' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Running verification' })).toBeInTheDocument()
+    expect(
+      screen.getByText('I’m going to inspect the repository structure before reading its implementation.'),
+    ).toBeInTheDocument()
   })
 
   test('merges repeated legacy phases, drops recovered debris, and deduplicates commands', async () => {
@@ -232,16 +310,19 @@ describe('MessageLog work transcript', () => {
       />,
     )
 
+    const fold = screen.getByRole('button', { name: 'Worked' })
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    await user.click(fold)
     const phase = screen.getByRole('button', { name: 'Reading the repository structure' })
     expect(screen.getAllByText('Reading the repository structure')).toHaveLength(1)
-    expect(document.querySelectorAll('[data-activity-stream]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-turn-fold]')).toHaveLength(1)
     expect(document.querySelectorAll('[data-activity-phase]')).toHaveLength(1)
     expect(
       screen.queryByText(
         'The response ended before its next action was complete. Send the request again to continue.',
       ),
     ).not.toBeInTheDocument()
-    expect(screen.queryByText(/I'll map the project structure/i)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/I'll map the project structure/i)).toHaveLength(1)
     expect(screen.queryByText('ls -la', { exact: true })).not.toBeInTheDocument()
 
     await user.click(phase)
@@ -256,15 +337,24 @@ describe('MessageLog work transcript', () => {
           {
             role: 'assistant',
             text: '',
-            notes: ['Reading the repository structure', 'Understanding potential next steps'],
+            notes: [
+              'I’m going to inspect the repository structure so I can locate the relevant files.',
+              'I found the top-level layout. Next I’m searching for the message flow.',
+            ],
             calls: [
               { kind: 'run', label: 'run ls -la', status: 'ok', result: 'package.json' },
               { kind: 'search', label: 'search message flow', status: 'running' },
             ],
             steps: [
-              { kind: 'note', text: 'Reading the repository structure' },
+              {
+                kind: 'note',
+                text: 'I’m going to inspect the repository structure so I can locate the relevant files.',
+              },
               { kind: 'call', index: 0 },
-              { kind: 'note', text: 'Understanding potential next steps' },
+              {
+                kind: 'note',
+                text: 'I found the top-level layout. Next I’m searching for the message flow.',
+              },
               { kind: 'call', index: 1 },
             ],
           },
@@ -276,8 +366,14 @@ describe('MessageLog work transcript', () => {
     expect(phases).toHaveLength(2)
     expect(phases[0]).toHaveAttribute('data-active', 'false')
     expect(phases[1]).toHaveAttribute('data-active', 'true')
-    expect(screen.getByText('Reading the repository structure')).not.toHaveClass('parallax-shimmer')
-    expect(screen.getByText('Understanding potential next steps')).toHaveClass('parallax-shimmer')
+    expect(
+      screen.getByRole('button', { name: 'Reading the repository structure' })
+        .querySelector('.parallax-phase-title'),
+    ).not.toHaveClass('parallax-shimmer')
+    expect(
+      screen.getByRole('button', { name: 'Searching the codebase' })
+        .querySelector('.parallax-phase-title'),
+    ).toHaveClass('parallax-shimmer')
   })
 
   test('shows Thinking once before initial progress and never brings it back mid-turn', () => {
@@ -415,7 +511,7 @@ describe('MessageLog work transcript', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Running a requested command' }))
+    await user.click(screen.getByRole('button', { name: 'Working through the task' }))
     const deniedMarks = document.querySelectorAll('[data-tool-status="denied"]')
     expect(deniedMarks.length).toBeGreaterThan(0)
     deniedMarks.forEach(mark => {
@@ -485,7 +581,7 @@ describe('MessageLog work transcript', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Inspecting the source file' }))
+    await user.click(screen.getByRole('button', { name: 'Working through the task' }))
     await user.click(screen.getByRole('button', { name: `Shell command: ${command}` }))
 
     const output = document.querySelector('[data-tool-language="javascript"]')

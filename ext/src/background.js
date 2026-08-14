@@ -1,5 +1,11 @@
+if (typeof importScripts === 'function') importScripts('build-config.js');
+
 const DEFAULT_WS_URL = 'ws://localhost:8765';
 const CHATGPT_URLS = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
+const PARALLAX_DEBUG = globalThis.__parallaxBuildConfig?.debug === true;
+const debugLog = PARALLAX_DEBUG
+  ? console.log.bind(console, '[Parallax][bg]')
+  : () => {};
 
 let ws = null;
 let contentPort = null;
@@ -10,23 +16,104 @@ let wsUrl = DEFAULT_WS_URL;
 let bridgeEnabled = false;
 const deliveryTasks = new Map(); // one ordered command stream per conversation
 const activeTurns = new Map(); // accepted page turns awaiting a terminal reply
+const stagedFilesByConversation = new Map(); // held locally until the matching send
+let folderProjects = {}; // absolute desktop folder → { name, url }
+const folderProjectTasks = new Map(); // one create/lookup operation per folder
+const projectSetupWaiters = new Map(); // request id → { tabId, projectName, finish }
+const ACTIVE_TURN_MAX_AGE_MS = 10 * 60 * 1000;
 
-function rememberTurn(convId, tabId, msg, msgId) {
+function persistedActiveTurns() {
+  return Object.fromEntries([...activeTurns.entries()].map(([convId, turn]) => [
+    convId,
+    {
+      ...turn,
+      files: [],
+      attachmentsLost: Boolean(turn.attachmentsLost || turn.files?.length),
+    },
+  ]));
+}
+
+function persistActiveTurns() {
+  chrome.storage.local.set({ parallax_active_turns: persistedActiveTurns() });
+}
+
+function sendTurnStatus() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try {
+    ws.send(JSON.stringify({
+      type: 'turn_status',
+      turns: [...activeTurns.values()].map((turn) => ({
+        convId: turn.convId,
+        msgId: turn.msgId,
+        accepted: Boolean(turn.accepted),
+      })),
+    }));
+  } catch (_) {}
+}
+
+function stageFiles(convId, files) {
+  if (!convId || !Array.isArray(files) || !files.length) return 0;
+  stagedFilesByConversation.set(convId, [...files]);
+  return files.length;
+}
+
+function takeStagedFiles(convId) {
+  const files = stagedFilesByConversation.get(convId) || [];
+  stagedFilesByConversation.delete(convId);
+  return files;
+}
+
+function canonicalProjectUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  try {
+    const url = new URL(rawUrl);
+    if (!['chatgpt.com', 'chat.openai.com'].includes(url.hostname)) return null;
+    const match = /^\/g\/(g-p-[^/?#]+)\/project(?:\/|$)/.exec(url.pathname);
+    if (!match) return null;
+    return `https://chatgpt.com/g/${encodeURIComponent(match[1])}/project`;
+  } catch (_) {
+    return null;
+  }
+}
+
+function persistFolderProjects() {
+  chrome.storage.local.set({ parallax_folder_projects: folderProjects });
+}
+
+function mapFolderProject(projectKey, projectName, rawUrl) {
+  const url = canonicalProjectUrl(rawUrl);
+  if (!projectKey || !projectName || !url) return null;
+  folderProjects[projectKey] = { name: projectName, url };
+  persistFolderProjects();
+  return folderProjects[projectKey];
+}
+
+function rememberTurn(convId, tabId, msg, msgId, files = []) {
   if (!convId || !msgId) return;
   activeTurns.set(convId, {
     convId,
     tabId,
     msgId,
     text: msg.text || '',
+    model: msg.model || '',
+    intelligence: msg.intelligence || '',
     expectUrl: msg.expectUrl || '',
+    files: Array.isArray(files) ? [...files] : [],
+    attachmentsLost: false,
+    updatedAt: Date.now(),
     accepted: false,
   });
+  persistActiveTurns();
+  sendTurnStatus();
 }
 
 function acceptTurn(convId, msgId) {
   const turn = activeTurns.get(convId);
   if (!turn || turn.msgId !== msgId) return false;
   turn.accepted = true;
+  turn.updatedAt = Date.now();
+  persistActiveTurns();
+  sendTurnStatus();
   return true;
 }
 
@@ -34,12 +121,26 @@ function settleTurn(convId, msgId) {
   const turn = activeTurns.get(convId);
   if (!turn || (msgId && turn.msgId !== msgId)) return false;
   activeTurns.delete(convId);
+  persistActiveTurns();
+  sendTurnStatus();
   return true;
 }
 
 function recoveryMessageForConversation(convId) {
   const turn = activeTurns.get(convId);
-  if (!turn?.accepted) return null;
+  if (!turn) return null;
+  if (!turn.accepted) {
+    return {
+      type: 'resume_pending_turn',
+      msgId: turn.msgId,
+      text: turn.text,
+      model: turn.model,
+      intelligence: turn.intelligence,
+      expectUrl: turn.expectUrl,
+      files: turn.files,
+      attachmentsLost: Boolean(turn.attachmentsLost),
+    };
+  }
   return {
     type: 'recover_turn',
     msgId: turn.msgId,
@@ -52,15 +153,29 @@ function recoveryMessageForConversation(convId) {
 // The background worker is a pass-through, so the one failure it can hide is
 // "message for the page arrived but no content script was connected" — log that.
 function bwlog(msg) {
+  if (!PARALLAX_DEBUG) return;
   try { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'log', msg: `[bg] ${msg}` })); } catch (_) {}
-  console.log('[Parallax][bg]', msg);
+  debugLog(msg);
+}
+
+async function contentScriptPresent(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => globalThis.__parallaxContentLoaded === true,
+    });
+    return results.some((result) => result?.result === true);
+  } catch (_) {
+    return false;
+  }
 }
 
 // Reloading the extension invalidates the content script's context on any already
 // open ChatGPT tab: the old script keeps running but can never reconnect, so every
 // message dies with "No content script connected" until the user manually refreshes.
-// Re-inject on demand instead. Probe first — if a LIVE script is present it is
-// already retrying its port, and injecting again would duplicate every listener.
+// Re-inject on demand instead. Probe the isolated-world marker first — if a LIVE
+// script is present it is already retrying its port, and injecting again would
+// duplicate every window listener, timer, warning, and send path.
 // Re-inject the content script into every conversation tab whose context died
 // (an extension reload invalidates them; the old script keeps running but can
 // never reconnect). Delivery already re-injects on demand — this is the manual
@@ -71,10 +186,15 @@ async function ensureContentScript() {
     if (ports.get(tabId)) continue;
     if (!(await tabAlive(tabId))) { forgetTab(tabId); continue; }
     try {
+      if (await contentScriptPresent(tabId)) {
+        bwlog(`waiting for existing content script on tab ${tabId} (conv ${convId})`);
+        if (await waitForPort(tabId, 5000)) healed++;
+        continue;
+      }
       bwlog(`re-injecting content script into tab ${tabId} (conv ${convId})`);
       await chrome.scripting.executeScript({
         target: { tabId },
-        files: ['src/protocol-core.js', 'src/content.js'],
+        files: ['src/build-config.js', 'src/protocol-core.js', 'src/content.js'],
       });
       if (await waitForPort(tabId, 5000)) healed++;
     } catch (e) {
@@ -103,7 +223,11 @@ const ports = new Map();     // tabId → port (one content script per owned tab
 // tell a legitimate tab to stand down forever ("No content script connected").
 const storageReady = new Promise((resolve) => {
   try {
-    chrome.storage.local.get('parallax_conv_tabs', (d) => {
+    chrome.storage.local.get([
+      'parallax_conv_tabs',
+      'parallax_folder_projects',
+      'parallax_active_turns',
+    ], (d) => {
       const stored = d && d.parallax_conv_tabs;
       if (stored && typeof stored === 'object') {
         // MERGE, never replace — a tab mapped between SW start and this callback
@@ -118,6 +242,41 @@ const storageReady = new Promise((resolve) => {
         }
         persistConvTabs();
       }
+      const storedProjects = d && d.parallax_folder_projects;
+      if (storedProjects && typeof storedProjects === 'object') {
+        for (const [projectKey, value] of Object.entries(storedProjects)) {
+          const name = value && typeof value === 'object' ? value.name : '';
+          const url = value && typeof value === 'object' ? value.url : value;
+          const canonical = canonicalProjectUrl(url);
+          if (projectKey && name && canonical) {
+            folderProjects[projectKey] = { name, url: canonical };
+          }
+        }
+        persistFolderProjects();
+      }
+      const storedTurns = d && d.parallax_active_turns;
+      const oldestAllowed = Date.now() - ACTIVE_TURN_MAX_AGE_MS;
+      if (storedTurns && typeof storedTurns === 'object') {
+        for (const [convId, turn] of Object.entries(storedTurns)) {
+          if (
+            convId &&
+            !activeTurns.has(convId) &&
+            turn &&
+            typeof turn === 'object' &&
+            typeof turn.msgId === 'string' &&
+            turn.msgId &&
+            Number(turn.updatedAt) >= oldestAllowed
+          ) {
+            activeTurns.set(convId, {
+              ...turn,
+              convId,
+              files: [],
+              attachmentsLost: Boolean(turn.attachmentsLost),
+            });
+          }
+        }
+      }
+      persistActiveTurns();
       resolve();
     });
   } catch (_) {
@@ -224,6 +383,69 @@ function failPageProbes(tabId) {
   }
 }
 
+function resolveProjectSetup(tabId, msg) {
+  const waiter = projectSetupWaiters.get(msg?.requestId);
+  if (!waiter || waiter.tabId !== tabId) return false;
+  if (msg.type === 'project_ready') {
+    const url = canonicalProjectUrl(msg.url);
+    waiter.finish(url ? { url } : { error: 'ChatGPT returned an invalid project link.' });
+  } else if (msg.type === 'project_error') {
+    waiter.finish({ error: msg.message || 'ChatGPT could not create the project.' });
+  } else {
+    return false;
+  }
+  return true;
+}
+
+function requestProjectSetup(tabId, port, projectName, failsafeMs = 60000) {
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve) => {
+    let timer = null;
+    let settled = false;
+    const onUpdated = (id, change, tab) => {
+      if (id !== tabId) return;
+      const url = canonicalProjectUrl(change?.url || tab?.url);
+      if (url) finish({ url });
+    };
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      projectSetupWaiters.delete(requestId);
+      try { chrome.tabs.onUpdated.removeListener(onUpdated); } catch (_) {}
+      resolve(result);
+    };
+    projectSetupWaiters.set(requestId, { tabId, projectName, finish });
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    timer = setTimeout(
+      () => finish({ error: `Timed out creating ChatGPT project "${projectName}".` }),
+      failsafeMs,
+    );
+    chrome.tabs.get(tabId).then((tab) => {
+      const url = canonicalProjectUrl(tab?.url);
+      if (url) finish({ url });
+    }).catch(() => {});
+    try {
+      port.postMessage({ type: 'ensure_project', requestId, projectName });
+    } catch (error) {
+      finish({ error: error?.message || 'Could not ask ChatGPT to create the project.' });
+    }
+  });
+}
+
+function resumeProjectSetups(tabId, port) {
+  for (const [requestId, waiter] of projectSetupWaiters) {
+    if (waiter.tabId !== tabId) continue;
+    try {
+      port.postMessage({
+        type: 'ensure_project',
+        requestId,
+        projectName: waiter.projectName,
+      });
+    } catch (_) {}
+  }
+}
+
 // Same idea for page load: listen for the tab reaching "complete".
 function waitForTabLoad(tabId, failsafeMs = 60000) {
   return new Promise((resolve) => {
@@ -245,14 +467,106 @@ function waitForTabLoad(tabId, failsafeMs = 60000) {
   });
 }
 
+async function livePortForTab(tabId, created) {
+  let port = ports.get(tabId);
+  if (port && !(await probePagePort(tabId, port))) {
+    bwlog(`page bridge on tab ${tabId} did not acknowledge — reconnecting`);
+    ports.delete(tabId);
+    if (contentPort === port) contentPort = null;
+    port = null;
+  }
+  if (!port) {
+    if (created) {
+      bwlog(`waiting for tab ${tabId} to load ChatGPT…`);
+      await waitForTabLoad(tabId);
+    }
+    port = await waitForPort(tabId, created ? 60000 : 1500);
+    if (!port) {
+      try {
+        bwlog(`no live page bridge on tab ${tabId} — reloading task tab`);
+        ports.delete(tabId);
+        await chrome.tabs.reload(tabId);
+        await waitForTabLoad(tabId, 30000);
+        port = await waitForPort(tabId, 30000);
+      } catch (error) {
+        bwlog(`task-tab reload failed for ${tabId}: ${error && error.message}`);
+      }
+    }
+  }
+  if (port && !(await probePagePort(tabId, port))) {
+    bwlog(`reconnected page bridge on tab ${tabId} did not acknowledge`);
+    ports.delete(tabId);
+    if (contentPort === port) contentPort = null;
+    return null;
+  }
+  return port;
+}
+
+async function moveTabToProject(tabId, rawUrl) {
+  const url = canonicalProjectUrl(rawUrl);
+  if (!url) return null;
+  let tab = null;
+  try { tab = await chrome.tabs.get(tabId); } catch (_) {}
+  if (canonicalProjectUrl(tab?.url) !== url) {
+    bwlog(`navigating tab ${tabId} to ChatGPT project ${url}`);
+    const oldPort = ports.get(tabId);
+    ports.delete(tabId);
+    if (contentPort === oldPort) contentPort = null;
+    await chrome.tabs.update(tabId, { url, active: false });
+    await waitForTabLoad(tabId);
+  }
+  return livePortForTab(tabId, true);
+}
+
+async function resolveFolderProject(tabId, port, projectKey, projectName) {
+  const mapped = folderProjects[projectKey] || Object.values(folderProjects).find(
+    (project) => project?.name === projectName && canonicalProjectUrl(project.url),
+  );
+  if (mapped?.url && canonicalProjectUrl(mapped.url)) {
+    bwlog(`reusing ChatGPT project ${mapped.name} at ${mapped.url}`);
+    if (!folderProjects[projectKey]) mapFolderProject(projectKey, projectName, mapped.url);
+    return mapped;
+  }
+
+  let tab = null;
+  try { tab = await chrome.tabs.get(tabId); } catch (_) {}
+  const currentUrl = canonicalProjectUrl(tab?.url);
+  if (currentUrl) {
+    bwlog(`using open ChatGPT project ${projectName} at ${currentUrl}`);
+    return mapFolderProject(projectKey, projectName, currentUrl);
+  }
+
+  bwlog(`creating or finding ChatGPT project ${projectName}`);
+  const result = await requestProjectSetup(tabId, port, projectName);
+  if (result?.error) throw new Error(result.error);
+  const project = mapFolderProject(projectKey, projectName, result?.url);
+  if (!project) throw new Error(`ChatGPT did not return a project for "${projectName}".`);
+  return project;
+}
+
+async function ensureFolderProject(tabId, port, projectKey, projectName) {
+  if (!projectKey || !projectName) return port;
+  let task = folderProjectTasks.get(projectKey);
+  if (!task) {
+    task = resolveFolderProject(tabId, port, projectKey, projectName);
+    folderProjectTasks.set(projectKey, task);
+    const cleanup = () => {
+      if (folderProjectTasks.get(projectKey) === task) folderProjectTasks.delete(projectKey);
+    };
+    task.then(cleanup, cleanup);
+  }
+  const project = await task;
+  return moveTabToProject(tabId, project.url);
+}
+
 // Resolve the tab that owns this conversation, creating it if needed. `url` is the
 // conversation's stored ChatGPT link — used only when we have to make a new tab
 // (first message, or the old tab was closed), never to re-navigate a live one.
-async function tabForConversation(convId, url) {
+async function tabForConversation(convId, url, projectKey) {
   const existing = convTabs[convId];
   if (existing !== undefined && (await tabAlive(existing))) return { tabId: existing, created: false };
   if (existing !== undefined) forgetTab(existing);
-  const target = url || 'https://chatgpt.com/';
+  const target = url || folderProjects[projectKey]?.url || 'https://chatgpt.com/';
   const created = await chrome.tabs.create({ url: target, active: false });
   mapConvTab(convId, created.id);
   bwlog(`opened tab ${created.id} for conv ${convId} at ${target}`);
@@ -289,6 +603,7 @@ function connect(url) {
     setStore({ ws_status: 'connected', ws_error: '' });
     broadcastStatus('connected', 'Connected to desktop app');
     wsUrl = url;
+    storageReady.then(sendTurnStatus);
   };
 
   ws.onclose = (e) => {
@@ -351,7 +666,7 @@ function connect(url) {
         if (deliveryTasks.get(deliveryKey) === task) deliveryTasks.delete(deliveryKey);
       });
     } catch (e) {
-      console.error('[Parallax] Failed to parse WS message:', e);
+      debugLog('Failed to parse WS message:', e);
     }
   };
 
@@ -381,6 +696,11 @@ function connect(url) {
       else bwlog('stop ignored — no live tab for this conversation');
       return;
     }
+    if (msg.type === 'send_files' && convId) {
+      const count = stageFiles(convId, msg.files);
+      bwlog(`staged ${count} file(s) for conv ${convId} until its next message send`);
+      return;
+    }
     if (!convId) {
       // No conversation attached (older desktop build) — fall back to any live tab.
       const anyPort = ports.values().next().value;
@@ -389,54 +709,62 @@ function connect(url) {
       return;
     }
 
-    const { tabId, created } = await tabForConversation(convId, msg.expectUrl);
-    let port = ports.get(tabId);
-    if (port && !(await probePagePort(tabId, port))) {
-      bwlog(`page bridge on tab ${tabId} did not acknowledge — reconnecting`);
-      ports.delete(tabId);
-      if (contentPort === port) contentPort = null;
-      port = null;
-    }
-    if (!port) {
-      if (created) {
-        // Fresh tab: let ChatGPT finish loading. Injecting mid-navigation just
-        // gets thrown away by the pending document.
-        bwlog(`waiting for tab ${tabId} to load ChatGPT…`);
-        await waitForTabLoad(tabId);
-      }
-      port = await waitForPort(tabId, created ? 60000 : 1500);
-      // Still nothing: the page bridge belongs to an invalidated extension
-      // context. Reload the hidden task tab so both the isolated content script
-      // and the MAIN-world network hook are installed from the same build.
-      if (!port) {
-        try {
-          bwlog(`no live page bridge on tab ${tabId} — reloading task tab`);
-          ports.delete(tabId);
-          await chrome.tabs.reload(tabId);
-          await waitForTabLoad(tabId, 30000);
-          port = await waitForPort(tabId, 30000);
-        } catch (e) {
-          bwlog(`task-tab reload failed for ${tabId}: ${e && e.message}`);
-        }
-      }
-    }
-    if (port && !(await probePagePort(tabId, port))) {
-      bwlog(`reconnected page bridge on tab ${tabId} did not acknowledge`);
-      ports.delete(tabId);
-      if (contentPort === port) contentPort = null;
-      port = null;
-    }
+    const { tabId, created } = await tabForConversation(
+      convId,
+      msg.expectUrl,
+      msg.projectKey,
+    );
+    let port = await livePortForTab(tabId, created);
     if (!port) {
       bwlog(`giving up on tab ${tabId} for conv ${convId}`);
       reportNoContentScript(msg);
       return;
     }
 
+    // Project lookup/creation belongs to the first actual message send. Creating
+    // an empty desktop draft, choosing a model, or selecting a file must remain a
+    // local action with no ChatGPT Project side effect.
+    if (
+      msg.type === 'send_message' &&
+      !msg.expectUrl &&
+      msg.projectKey &&
+      msg.projectName
+    ) {
+      try {
+        port = await ensureFolderProject(
+          tabId,
+          port,
+          msg.projectKey,
+          msg.projectName,
+        );
+      } catch (error) {
+        bwlog(`project setup failed for conv ${convId}: ${error && error.message}`);
+        try {
+          ws.send(JSON.stringify({
+            type: 'error',
+            convId,
+            msgId: msg.msgId || '',
+            message: error?.message || 'Could not prepare the ChatGPT project.',
+          }));
+        } catch (_) {}
+        return;
+      }
+      if (!port) {
+        reportNoContentScript(msg);
+        return;
+      }
+    }
+
     if (msg.type === 'send_message') {
       const msgId = msg.msgId || crypto.randomUUID();
       bwlog(`→tab ${tabId} (conv ${convId}) send_message msgId=${msgId}`);
-      rememberTurn(convId, tabId, msg, msgId);
+      const stagedFiles = takeStagedFiles(convId);
+      rememberTurn(convId, tabId, msg, msgId, stagedFiles);
       try {
+        if (stagedFiles.length) {
+          bwlog(`→tab ${tabId} (conv ${convId}) send_files count=${stagedFiles.length}`);
+          port.postMessage({ type: 'send_files', files: stagedFiles });
+        }
         port.postMessage({
           type: 'send_message',
           text: msg.text,
@@ -500,21 +828,10 @@ function startBridge() {
   });
 }
 
-// NOTE: every tabs.create/update below uses `active: false` ON PURPOSE. Parallax drives
-// its ChatGPT tab invisibly — activating it yanks the user's focus out of the
-// desktop app mid-task, which is jarring and got much worse once the wrong-chat
-// guard started navigating on demand. Don't change these back to `active: true`.
-// A new conversation just gets its own fresh tab. Nothing is reused, so starting a
-// chat can never disturb another one that's mid-turn.
-async function handleNewChat(convId) {
-  if (!convId) return; // nothing to bind a tab to
-  const existing = convTabs[convId];
-  if (existing !== undefined && (await tabAlive(existing))) {
-    if (ws) ws.send(JSON.stringify({ type: 'new_chat_started', convId, tabId: existing }));
-    return;
-  }
-  const { tabId } = await tabForConversation(convId, null);
-  if (ws) ws.send(JSON.stringify({ type: 'new_chat_started', convId, tabId }));
+// Empty desktop drafts are local state. Their first message send creates the
+// owned tab and resolves the folder's ChatGPT Project.
+function handleNewChat(convId) {
+  if (convId) bwlog(`new chat deferred until first send for conv ${convId}`);
 }
 
 // Switching threads in the app no longer navigates anything — each conversation's
@@ -582,6 +899,13 @@ chrome.runtime.onConnect.addListener((port) => {
   const buffered = [];         // messages that arrive before ownership is known
 
   function forward(msg) {
+    if (
+      tabId != null &&
+      (msg?.type === 'project_ready' || msg?.type === 'project_error') &&
+      resolveProjectSetup(tabId, msg)
+    ) {
+      return;
+    }
     if (msg?.type === 'sent') acceptTurn(convId, msg.msgId);
     let delivered = false;
     try {
@@ -592,7 +916,7 @@ chrome.runtime.onConnect.addListener((port) => {
         delivered = true;
       }
     } catch (e) {
-      console.error('[Parallax] ws.send failed:', e);
+      debugLog('ws.send failed:', e);
     }
     if (
       delivered &&
@@ -636,6 +960,7 @@ chrome.runtime.onConnect.addListener((port) => {
     owned = true;
     ports.set(tabId, port);
     notifyPortReady(tabId, port);   // release anything awaiting this tab
+    resumeProjectSetups(tabId, port);
     contentPort = port;      // kept for the popup's "page bridge" indicator
     contentTabId = tabId;
     bwlog(`content script CONNECTED (tab ${tabId} → conv ${convId})`);
@@ -649,7 +974,7 @@ chrome.runtime.onConnect.addListener((port) => {
       });
       const recovery = recoveryMessageForConversation(convId);
       if (recovery) {
-        bwlog(`recovering accepted turn ${recovery.msgId} on tab ${tabId}`);
+        bwlog(`${recovery.type === 'recover_turn' ? 'recovering accepted' : 'resuming pending'} turn ${recovery.msgId} on tab ${tabId}`);
         port.postMessage(recovery);
       }
     } catch (_) {}
@@ -703,7 +1028,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // Catch unhandled rejections so Chrome doesn't terminate the SW on a stray error
 self.addEventListener('unhandledrejection', (e) => {
-  console.warn('[Parallax] unhandled rejection:', e.reason);
+  debugLog('unhandled rejection:', e.reason);
   e.preventDefault();
 });
 

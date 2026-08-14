@@ -68,7 +68,7 @@ const config: Config = {
         '2xl': 'calc(var(--radius) + 8px)',
       },
       fontFamily: {
-        sans: ['DM Sans Variable', 'DM Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'system-ui', 'sans-serif'],
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', 'sans-serif'],
         mono: ['SF Mono', 'SFMono-Regular', 'JetBrains Mono', 'Consolas', 'Liberation Mono', 'Menlo', 'monospace'],
       },
       keyframes: {

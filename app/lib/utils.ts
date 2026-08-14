@@ -23,3 +23,8 @@ export function formatRelativeTime(ts?: number): string {
 export function folderName(path: string): string {
   return path.split('/').filter(Boolean).pop() || path
 }
+
+/** ChatGPT Project name paired with a desktop workspace folder. */
+export function chatgptProjectName(path: string): string {
+  return `plx-${folderName(path)}`
+}

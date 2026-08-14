@@ -33,7 +33,6 @@ interface Props {
   sending: boolean
   /** The shared browser transport is busy, even if another chat owns it. */
   queueing?: boolean
-  queuedCount?: number
   queuedMessages?: QueuedMessage[]
   currentConvId: string | null
   onSend: (
@@ -44,7 +43,7 @@ interface Props {
     attachments?: AttachedFile[],
   ) => void
   onStop?: () => void
-  onEditQueuedMessage?: (messageId: string) => string | null
+  onEditQueuedMessage?: (messageId: string, text: string) => boolean | void
   onDeleteQueuedMessage?: (messageId: string) => void
   gptModel: string
   onSetGptModel: (v: string) => void
@@ -74,7 +73,6 @@ interface QueuedMessage {
 export default function InputBar({
   sending,
   queueing = sending,
-  queuedCount = 0,
   queuedMessages = [],
   currentConvId,
   onSend,
@@ -133,7 +131,6 @@ export default function InputBar({
     action: PendingApproval['actions'][number]
   } | null>(null)
   const [approvalLeaving, setApprovalLeaving] = useState(false)
-  const firstQueuedMessage = queuedMessages[0]
 
   const focusComposer = useCallback(() => {
     // Deferred by one macrotask so focus lands AFTER the current commit — an
@@ -323,21 +320,6 @@ export default function InputBar({
     e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'
   }
 
-  function editQueuedMessage() {
-    if (!firstQueuedMessage || !onEditQueuedMessage) return
-    const restoredText = onEditQueuedMessage(firstQueuedMessage.id)
-    if (restoredText === null) return
-    setText(restoredText)
-    setTimeout(() => {
-      const textarea = textareaRef.current
-      if (!textarea) return
-      textarea.style.height = 'auto'
-      textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px'
-      textarea.focus()
-      textarea.setSelectionRange(restoredText.length, restoredText.length)
-    }, 0)
-  }
-
   function removeFile(idx: number) {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
   }
@@ -359,91 +341,103 @@ export default function InputBar({
   const placeholder = emptyState ? 'Ask anything…' : 'Ask for follow-up changes or attach files'
 
   const visibleApprovalAction = approvalAction ?? displayedApproval?.action
+  const queueSurface = (
+    <QueuedMessageList
+      messages={queuedMessages}
+      onEdit={onEditQueuedMessage}
+      onDelete={onDeleteQueuedMessage}
+    />
+  )
   if (visibleApprovalAction) {
     const actionLabel = agentActionLabel(visibleApprovalAction)
     const approveLabel = visibleApprovalAction.type === 'write' ? 'Apply' : 'Run'
     return (
-      <form
-        className="parallax-approval-frame mx-auto min-w-0"
-        data-approval-state={approvalLeaving ? 'leaving' : 'entering'}
-        onSubmit={(event) => event.preventDefault()}
-      >
-        <div className="group rounded-[22px] p-px">
-          <div className="parallax-composer-shell parallax-approval-surface min-h-[108px] overflow-hidden rounded-[24px] border">
-            <div
-              ref={approvalRef}
-              role="alertdialog"
-              aria-label={`Approval required: ${actionLabel}`}
-              tabIndex={-1}
-              className="parallax-approval-content flex min-h-[106px] flex-col justify-between gap-3 px-4 py-4 outline-none sm:flex-row sm:items-center sm:px-5"
-              data-approval-composer
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="parallax-approval-icon grid size-9 shrink-0 place-items-center rounded-xl">
-                  {visibleApprovalAction.type === 'write' ? <WriteActionIcon /> : <RunActionIcon />}
-                </span>
-                <div className="min-w-0">
-                  <div className="parallax-approval-kicker mb-0.5 text-[11px] font-semibold uppercase tracking-[0.08em]">
-                    Approval required
-                  </div>
-                  <div
-                    className="parallax-approval-command truncate font-mono text-[13px] font-normal"
-                    title={actionLabel}
-                  >
-                    {actionLabel}
+      <div className="mx-auto w-full min-w-0 max-w-3xl">
+        {queueSurface}
+        <form
+          className="parallax-approval-frame min-w-0"
+          data-approval-state={approvalLeaving ? 'leaving' : 'entering'}
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <div className="group rounded-[22px] p-px">
+            <div className="parallax-composer-shell parallax-approval-surface min-h-[108px] overflow-hidden rounded-[24px] border">
+              <div
+                ref={approvalRef}
+                role="alertdialog"
+                aria-label={`Approval required: ${actionLabel}`}
+                tabIndex={-1}
+                className="parallax-approval-content flex min-h-[106px] flex-col justify-between gap-3 px-4 py-4 outline-none sm:flex-row sm:items-center sm:px-5"
+                data-approval-composer
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="parallax-approval-icon grid size-9 shrink-0 place-items-center rounded-xl">
+                    {visibleApprovalAction.type === 'write' ? <WriteActionIcon /> : <RunActionIcon />}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="parallax-approval-kicker mb-0.5 text-[11px] font-semibold uppercase tracking-[0.08em]">
+                      Approval required
+                    </div>
+                    <div
+                      className="parallax-approval-command truncate font-mono text-[13px] font-normal"
+                      title={actionLabel}
+                    >
+                      {actionLabel}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex shrink-0 items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={onDeny}
-                  disabled={approvalLeaving}
-                  className="parallax-approval-deny h-8 rounded-lg border px-3 text-[12.5px] font-medium transition-colors"
-                >
-                  Deny
-                </button>
-                <button
-                  type="button"
-                  onClick={onApprove}
-                  disabled={approvalLeaving}
-                  className="parallax-approval-accept h-8 rounded-lg px-3.5 text-[12.5px] font-semibold shadow-xs transition-[background-color,transform] hover:-translate-y-px"
-                >
-                  {approveLabel}
-                </button>
+                <div className="flex shrink-0 items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={onDeny}
+                    disabled={approvalLeaving}
+                    className="parallax-approval-deny h-8 rounded-lg border px-3 text-[12.5px] font-medium transition-colors"
+                  >
+                    Deny
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onApprove}
+                    disabled={approvalLeaving}
+                    className="parallax-approval-accept h-8 rounded-lg px-3.5 text-[12.5px] font-semibold shadow-xs transition-[background-color,transform] hover:-translate-y-px"
+                  >
+                    {approveLabel}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
     )
   }
 
   return (
-    <form
-      className="mx-auto w-full min-w-0 max-w-3xl"
-      onSubmit={(e) => {
-        e.preventDefault()
-        handleSend()
-      }}
-      onDragEnter={(e) => {
-        e.preventDefault()
-        setDragOver(true)
-      }}
-      onDragOver={(e) => {
-        e.preventDefault()
-        setDragOver(true)
-      }}
-      onDragLeave={(e) => {
-        e.preventDefault()
-        setDragOver(false)
-      }}
-      onDrop={(e) => {
-        e.preventDefault()
-        setDragOver(false)
-        if (e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files)
-      }}
-    >
+    <div className="mx-auto w-full min-w-0 max-w-3xl">
+      {queueSurface}
+      <form
+        className="w-full min-w-0"
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleSend()
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault()
+          setDragOver(true)
+        }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragOver(true)
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+          if (e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files)
+        }}
+      >
       <div className="group rounded-[22px] p-px">
         <div
           className={cn(
@@ -503,53 +497,6 @@ export default function InputBar({
               ))}
             </div>
           )}
-          {queuedCount > 0 && (
-            <div
-              className="flex min-w-0 items-center gap-2 px-4 pt-2 text-[11px] text-muted-foreground/70"
-              data-queued-message-count
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className="shrink-0 font-medium">
-                  {queuedCount} {queuedCount === 1 ? 'message' : 'messages'} queued
-                </span>
-                {firstQueuedMessage && (
-                  <>
-                    <span aria-hidden className="text-border">·</span>
-                    <span className="min-w-0 truncate" data-queued-message-preview>
-                      {firstQueuedMessage.text}
-                    </span>
-                  </>
-                )}
-              </div>
-              {firstQueuedMessage && (
-                <div className="ml-auto flex shrink-0 items-center gap-0.5">
-                  {onEditQueuedMessage && (
-                    <button
-                      type="button"
-                      onClick={editQueuedMessage}
-                      className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                      aria-label="Edit queued message"
-                      title="Edit queued message"
-                    >
-                      <QueuedEditIcon />
-                    </button>
-                  )}
-                  {onDeleteQueuedMessage && (
-                    <button
-                      type="button"
-                      onClick={() => onDeleteQueuedMessage(firstQueuedMessage.id)}
-                      className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                      aria-label="Delete queued message"
-                      title="Delete queued message"
-                    >
-                      <QueuedTrashIcon />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Attachments */}
           {attachedFiles.length > 0 && (
             <div className={cn('flex flex-wrap gap-2 px-3 sm:px-4', previewAnnotations.length ? 'pt-2' : 'pt-3')}>
@@ -838,7 +785,151 @@ export default function InputBar({
           </div>
         </div>
       )}
-    </form>
+      </form>
+    </div>
+  )
+}
+
+function QueuedMessageList({
+  messages,
+  onEdit,
+  onDelete,
+}: {
+  messages: QueuedMessage[]
+  onEdit?: (messageId: string, text: string) => boolean | void
+  onDelete?: (messageId: string) => void
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+
+  useEffect(() => {
+    if (!editingId || messages.some((message) => message.id === editingId)) return
+    setEditingId(null)
+    setDraft('')
+  }, [editingId, messages])
+
+  if (messages.length === 0) return null
+
+  function beginEdit(message: QueuedMessage) {
+    setEditingId(message.id)
+    setDraft(message.text)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setDraft('')
+  }
+
+  function saveEdit(messageId: string) {
+    const trimmed = draft.trim()
+    if (!trimmed || !onEdit) return
+    if (onEdit(messageId, trimmed) === false) return
+    cancelEdit()
+  }
+
+  return (
+    <div
+      className="mb-1.5 overflow-hidden rounded-[16px] border border-border bg-card shadow-xs"
+      aria-label="Queued messages"
+      data-queued-message-list
+      data-queued-message-count={messages.length}
+    >
+      {messages.map((message, index) => {
+        const editing = editingId === message.id
+        const position = index + 1
+        return (
+          <div
+            key={message.id}
+            className={cn(
+              'flex min-h-11 min-w-0 items-center gap-2.5 px-3.5 py-2',
+              index > 0 && 'border-t border-border/70',
+            )}
+            data-queued-message-row
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/65" aria-hidden>
+              <QueuedIcon />
+            </span>
+            <span className="shrink-0 text-[12px] font-medium text-foreground/85">Queued</span>
+            {editing ? (
+              <input
+                autoFocus
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    saveEdit(message.id)
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelEdit()
+                  }
+                }}
+                className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-[12.5px] text-foreground outline-none focus:border-ring/55"
+                aria-label={`Queued message ${position}`}
+              />
+            ) : (
+              <span
+                className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground"
+                title={message.text}
+                data-queued-message-preview
+              >
+                {message.text}
+              </span>
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              {editing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => saveEdit(message.id)}
+                    disabled={!draft.trim()}
+                    className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35"
+                    aria-label={`Save queued message ${position}`}
+                    title="Save"
+                  >
+                    <CheckIcon />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    aria-label={`Cancel editing queued message ${position}`}
+                    title="Cancel"
+                  >
+                    <QueuedCancelIcon />
+                  </button>
+                </>
+              ) : (
+                <>
+                  {onEdit && (
+                    <button
+                      type="button"
+                      onClick={() => beginEdit(message)}
+                      className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      aria-label={`Edit queued message ${position}`}
+                      title="Edit queued message"
+                    >
+                      <QueuedEditIcon />
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(message.id)}
+                      className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                      aria-label={`Delete queued message ${position}`}
+                      title="Delete queued message"
+                    >
+                      <QueuedTrashIcon />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -902,11 +993,28 @@ function AnnotationIcon() {
   )
 }
 
+function QueuedIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  )
+}
+
 function QueuedEditIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  )
+}
+
+function QueuedCancelIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m6 6 12 12M18 6 6 18" />
     </svg>
   )
 }

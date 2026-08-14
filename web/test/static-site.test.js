@@ -16,14 +16,33 @@ const vercelConfig = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'ut
 
 test('publishes stable download and repository links', () => {
   assert.match(html, /href="\/download\/macos"/);
-  assert.match(html, /href="\/download\/extension"/);
+  assert.match(
+    html,
+    /https:\/\/chromewebstore\.google\.com\/detail\/parallax\/bfnlhalnojbjoipblfnhhljffajanaei\?authuser=0&amp;hl=en-GB/,
+  );
+  assert.doesNotMatch(html, /href="\/download\/extension"/);
   assert.match(html, /https:\/\/github\.com\/akshithio\/parallax/);
+});
+
+test('uses the concise site title and the published extension flow', () => {
+  assert.match(html, /<title>Parallax<\/title>/);
+  assert.match(html, /<meta property="og:title" content="Parallax">/);
+  assert.match(html, /Installed from the Chrome Web Store/);
+  assert.doesNotMatch(html, /Unpacked \.zip|developer mode|load the unpacked/i);
+  assert.deepEqual(vercelConfig.redirects.find(({ source }) => source === '/download/extension'), {
+    source: '/download/extension',
+    destination:
+      'https://chromewebstore.google.com/detail/parallax/bfnlhalnojbjoipblfnhhljffajanaei?authuser=0&hl=en-GB',
+    permanent: false,
+  });
 });
 
 test('publishes a complete privacy disclosure for the Chrome bridge', () => {
   assert.match(html, /href="\/privacy"/);
   assert.match(privacy, /separate inactive task tab/);
   assert.match(privacy, /local WebSocket/);
+  assert.match(privacy, /local folder-to-ChatGPT-Project mapping/);
+  assert.match(privacy, /full local folder path is not entered into ChatGPT/);
   assert.match(privacy, /does not operate developer data servers/);
   assert.match(privacy, /Chrome Web Store User Data Policy/);
   assert.deepEqual(

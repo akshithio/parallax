@@ -4,8 +4,17 @@
 // dead, safe to inject" from "alive and already reconnecting, do NOT double-inject".
 globalThis.__parallaxContentLoaded = true;
 
+const PARALLAX_DEBUG = globalThis.__parallaxBuildConfig?.debug === true;
+// Bound native console methods keep DevTools attribution at the caller. Wrapper
+// functions made every warning/error appear to originate from these same lines,
+// hiding which reconnect or delivery path actually emitted it.
+const debugLog = PARALLAX_DEBUG
+  ? console.log.bind(console, '[Parallax]')
+  : () => {};
+
 let backgroundPort = null;
 let sending = false;
+let projectSetupActive = false;
 // Start inert. The background explicitly resumes only tabs that belong to a Parallax
 // conversation; every other ChatGPT tab must remain observationally untouched.
 let standby = true;
@@ -69,7 +78,7 @@ window.addEventListener('message', (e) => {
   if (d.__parallax_net_debug === true) { wlog(`sse sample: ${d.sample}`); return; }
   if (d.__parallax_net !== true) return;
   if (!currentSend) {
-    console.warn('[Parallax] net response dropped — no currentSend (was port reset?)');
+    debugLog('net response dropped — no currentSend (was port reset?)');
     return;
   }
   if (d.turnId && d.turnId !== currentSend.msgId) {
@@ -142,13 +151,13 @@ function connectBackground() {
     backgroundPort = null;
   }
 
-  // If the extension was reloaded, chrome.runtime.id will throw
-  // "Extension context invalidated" — detect this and warn the user.
+  // An extension update invalidates the old isolated world. Stop that stale
+  // script silently; the new background refreshes Parallax-owned tabs itself.
+  // Logging a warning here makes Chrome expose an alarming extension Errors
+  // button for a normal update lifecycle.
   try {
     if (!chrome.runtime.id) throw new Error('no runtime id');
-  } catch (e) {
-    console.warn('[Parallax] extension context lost — this page needs a refresh');
-    showReloadWarning();
+  } catch (_) {
     return;
   }
 
@@ -157,12 +166,11 @@ function connectBackground() {
   } catch (e) {
     reconnectAttempts++;
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.warn('[Parallax] max reconnect attempts reached — extension may need a page refresh');
-      showReloadWarning();
+      debugLog('max reconnect attempts reached');
       return;
     }
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-    console.warn('[Parallax] connect failed (attempt', reconnectAttempts, '):', e.message, '— retry in', delay, 'ms');
+    debugLog('connect failed (attempt', reconnectAttempts, '):', e.message, '— retry in', delay, 'ms');
     setTimeout(connectBackground, delay);
     return;
   }
@@ -170,17 +178,27 @@ function connectBackground() {
   backgroundPort.onMessage.addListener(handleMessage);
   backgroundPort.onDisconnect.addListener(() => {
     backgroundPort = null;
-    if (chrome.runtime.lastError) {
-      console.warn('[Parallax] port disconnected:', chrome.runtime.lastError.message);
+    // Consume lastError while Chrome's disconnect callback still exposes it.
+    // Leaving it unread creates its own "Unchecked runtime.lastError" entry.
+    let disconnectError = null;
+    try { disconnectError = chrome.runtime.lastError; } catch (_) {}
+    try {
+      if (!chrome.runtime.id) return;
+    } catch (_) {
+      return;
     }
-    sending = false;
+    if (disconnectError) debugLog('port disconnected:', disconnectError.message);
+    // A service-worker restart can drop only the Port while this same page and
+    // send coroutine remain alive. Preserve the busy state in that case so the
+    // reconnect handshake cannot start a duplicate turn beside it.
+    if (!currentSend) sending = false;
     setTimeout(connectBackground, 500);
   });
   // Flush any messages queued while disconnected
   const queue = pendingOutbox.splice(0);
   for (const msg of queue) {
     try { backgroundPort.postMessage(msg); } catch (e) {
-      console.error('[Parallax] flush failed:', e);
+      debugLog('flush failed:', e);
     }
   }
   backgroundPort.postMessage({
@@ -257,7 +275,7 @@ function handleMessage(msg) {
   if (msg.type === 'standby') {
     standby = true;
     stopOwnedPageFeatures();
-    console.log('[Parallax] standing down — this is not the Parallax tab');
+    debugLog('standing down — this is not the Parallax tab');
     return;
   }
   // Standby must be reversible: a tab can be told to stand down before the
@@ -265,18 +283,20 @@ function handleMessage(msg) {
   if (msg.type === 'resume') {
     if (standby) {
       startOwnedPageFeatures();
-      console.log('[Parallax] resumed — this tab is Parallax-owned');
+      debugLog('resumed — this tab is Parallax-owned');
     }
     return;
   }
   if (standby) {
     const ownedCommand = [
       'send_message',
+      'resume_pending_turn',
       'edit_message',
       'recover_turn',
       'switch_model',
       'stop',
       'send_files',
+      'ensure_project',
       'debug',
     ].includes(msg.type);
     if (!ownedCommand) return;
@@ -284,11 +304,14 @@ function handleMessage(msg) {
     // the owned tab. Recover if a preceding resume message was lost during an
     // extension reload instead of silently discarding the command.
     startOwnedPageFeatures();
-    console.log('[Parallax] resumed from an owned page command');
+    debugLog('resumed from an owned page command');
   }
   switch (msg.type) {
     case 'recover_turn':
       recoverAcceptedTurn(msg);
+      break;
+    case 'resume_pending_turn':
+      resumePendingTurn(msg);
       break;
     case 'send_message': {
       const filesReady = uploadTask;
@@ -317,7 +340,7 @@ function handleMessage(msg) {
       // Picking a model in the desktop app switches it on the site immediately
       // (not just at send time). A busy tab reports the failure instead of letting
       // the desktop optimistically claim a change that never happened.
-      console.log('[Parallax] switch_model recv → model:', msg.model || '(keep)', '| intelligence:', msg.intelligence || '(keep)', sending ? '(BUSY)' : '');
+      debugLog('switch_model recv → model:', msg.model || '(keep)', '| intelligence:', msg.intelligence || '(keep)', sending ? '(BUSY)' : '');
       if (sending) {
         reportSelectionError({
           message: 'Wait for the current response to finish before changing the model or intelligence.',
@@ -336,6 +359,9 @@ function handleMessage(msg) {
       break;
     case 'send_files':
       uploadTask = uploadTask.catch(() => {}).then(() => handleSendFiles(msg.files));
+      break;
+    case 'ensure_project':
+      ensureChatGPTProject(msg.projectName, msg.requestId);
       break;
     case 'debug':
       handleDebug(msg);
@@ -390,7 +416,10 @@ const SELECTORS = {
 
 function find(selectors) {
   for (const sel of selectors) {
-    const el = document.querySelector(sel);
+    const el = [...document.querySelectorAll(sel)].find((candidate) => (
+      candidate.getAttribute?.('aria-hidden') !== 'true' &&
+      elementIsVisible(candidate)
+    ));
     if (el) return el;
   }
   return null;
@@ -439,31 +468,47 @@ function looksLikeModel(label) {
 
 function scrapeModelMenu(force = false) {
   try {
-    const radios = [...document.querySelectorAll('[role="menuitemradio"]')].filter((e) => e.offsetParent !== null);
-    if (!radios.length) return null;
+    const picker = document.querySelector('[data-testid="composer-intelligence-picker-content"]');
+    if (!picker || !elementIsVisible(picker)) return null;
+    const pickerMenu = picker.closest('[role="menu"]');
+    if (!pickerMenu) return null;
 
-    // Split radios by WHAT THEY ARE, not by DOM container: a model name vs a
-    // reasoning tier. This doesn't depend on ChatGPT's testids/nesting, so a
-    // markup tweak can't misfile the intelligence tiers as models (the bug).
-    const models = [];
+    const intelligenceRadios = [...picker.querySelectorAll('[role="menuitemradio"]')]
+      .filter(elementIsVisible);
+    const modelRadios = [...document.querySelectorAll('[role="menuitemradio"]')]
+      .filter((element) => elementIsVisible(element) && looksLikeModel(rowLabel(element)));
+
+    // Intelligence options must be descendants of ChatGPT's dedicated composer
+    // picker. Other radio menus on the page include Project memory choices and
+    // must never leak into the desktop model control.
+    const models = modelRadios.map((element) => {
+      const label = rowLabel(element);
+      return {
+        title: label,
+        sublabel: rowSubtext(element, label),
+        checked: rowIsChecked(element),
+      };
+    });
     const intelligences = [];
-    for (const e of radios) {
+    for (const e of intelligenceRadios) {
       const label = rowLabel(e);
-      if (!label) continue;
+      if (!label || looksLikeModel(label)) continue;
       const row = {
         label,
         hint: rowSubtext(e, label),
-        checked: e.getAttribute('aria-checked') === 'true' || e.getAttribute('data-state') === 'checked',
+        checked: rowIsChecked(e),
       };
-      if (looksLikeModel(label)) models.push({ title: label, sublabel: row.hint, checked: row.checked });
-      else intelligences.push(row);
+      intelligences.push(row);
     }
 
-    // Current model = the model row (menuitem w/ submenu) anywhere in an open menu;
-    // fall back to the checked model in the list.
+    // The current menu now labels its submenu row generically as "Model". Never
+    // publish that navigation label as selected state; use a checked model row.
     let currentModel = '';
-    const modelRow = document.querySelector('[role="menu"] [role="menuitem"][aria-haspopup="menu"], [role="menu"] [role="menuitem"][data-has-submenu]');
-    if (modelRow) currentModel = rowLabel(modelRow);
+    const modelRow = pickerMenu.querySelector(
+      '[role="menuitem"][aria-haspopup="menu"], [role="menuitem"][data-has-submenu]',
+    );
+    const modelRowLabel = modelRow ? rowLabel(modelRow) : '';
+    if (looksLikeModel(modelRowLabel)) currentModel = modelRowLabel;
     if (!currentModel) { const c = models.find((m) => m.checked); if (c) currentModel = c.title; }
     const currentIntelligence = intelligences.find((i) => i.checked)?.label || '';
 
@@ -474,7 +519,7 @@ function scrapeModelMenu(force = false) {
     }
     lastMenuSig = sig;
     postToBg({ type: 'models', models, intelligences, currentModel, currentIntelligence });
-    console.log('[Parallax] model menu →', currentModel || '(?)',
+    debugLog('model menu →', currentModel || '(?)',
       '| models:', models.map((m) => m.title).join(', ') || '(none yet, hover the model row)',
       '| intelligence:', intelligences.map((i) => i.label + (i.checked ? ' ✓' : '') + (i.hint ? ` (${i.hint})` : '')).join(', ') || '(none)');
     return { models, intelligences, currentModel, currentIntelligence };
@@ -489,7 +534,7 @@ function observeModelMenu() {
   if (standby || modelMenuObserver) return;
   try {
     modelMenuObserver = new MutationObserver(() => {
-      if (document.querySelector('[role="menuitemradio"]')) {
+      if (document.querySelector('[data-testid="composer-intelligence-picker-content"]')) {
         setTimeout(() => { if (!standby) scrapeModelMenu(); }, 120);
       }
     });
@@ -509,34 +554,34 @@ let seedingMenu = false;
 let modelMenuSeedTimer = null;
 
 function scheduleModelMenuSeed() {
-  if (standby || seededMenu || seedingMenu || modelMenuSeedTimer) return;
+  if (standby || sending || projectSetupActive || seededMenu || seedingMenu || modelMenuSeedTimer) return;
   modelMenuSeedTimer = setTimeout(() => {
     modelMenuSeedTimer = null;
-    if (!standby) seedModelMenu();
+    if (!standby && !sending && !projectSetupActive) seedModelMenu();
   }, 3000);
 }
 
 async function seedModelMenu() {
-  if (standby || seededMenu || seedingMenu) return;
+  if (standby || sending || projectSetupActive || seededMenu || seedingMenu) return;
   seedingMenu = true;
   try {
     // Wait (up to ~20s) for the composer's model button to render.
     let trigger = null;
     for (let i = 0; i < 40; i++) {
-      if (standby) return;
+      if (standby || sending || projectSetupActive) return;
       if (lastMenuSig) {
         seededMenu = true;
-        console.log('[Parallax] seed skipped — menu already captured');
+        debugLog('seed skipped — menu already captured');
         return;
       }
       trigger = findModelTrigger();
       if (trigger) break;
       await sleep(500);
     }
-    if (!trigger) { console.warn('[Parallax] seed: model button not found after 20s'); return; }
-    if (standby) return;
+    if (!trigger) { debugLog('seed: model button not found after 20s'); return; }
+    if (standby || sending || projectSetupActive) return;
     seededMenu = true;
-    console.log('[Parallax] seeding model menu via', (trigger.textContent || '').trim().slice(0, 24));
+    debugLog('seeding model menu via', (trigger.textContent || '').trim().slice(0, 24));
     openModelMenu(trigger);
     await sleep(500);
     scrapeModelMenu(); // current model's intelligence tiers (+ current model)
@@ -549,13 +594,13 @@ async function seedModelMenu() {
       await sleep(500);
       scrapeModelMenu(); // the model list
     } else {
-      console.warn('[Parallax] seed: model row not found (menu may not have opened)');
+      debugLog('seed: model row not found (menu may not have opened)');
     }
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await sleep(150);
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   } catch (e) {
-    console.warn('[Parallax] seed failed:', e);
+    debugLog('seed failed:', e);
   } finally {
     seedingMenu = false;
   }
@@ -635,6 +680,399 @@ function waitForDom(check, failsafeMs = 120000) {
   });
 }
 
+function currentProjectUrl(rawUrl = window.location.href) {
+  return globalThis.ParallaxProtocolCore?.projectUrl(rawUrl) || null;
+}
+
+function projectControlLabels(element) {
+  return [
+    element?.getAttribute?.('aria-label'),
+    element?.getAttribute?.('title'),
+    element?.textContent,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+}
+
+function projectUrlInValue(value) {
+  if (typeof value !== 'string' || !value) return null;
+  const normalized = value
+    .replace(/\\u002f/gi, '/')
+    .replace(/\\\//g, '/');
+  const route = /(?:https:\/\/chatgpt\.com)?\/g\/(g-p-[a-z0-9_-]+)\/project/i.exec(normalized);
+  if (route) return `https://chatgpt.com/g/${encodeURIComponent(route[1])}/project`;
+  const id = /(?:^|[^a-z0-9_-])(g-p-[a-z0-9_-]+)(?:$|[^a-z0-9_-])/i.exec(normalized);
+  return id ? `https://chatgpt.com/g/${encodeURIComponent(id[1])}/project` : null;
+}
+
+function projectUrlFromReactProps(element) {
+  if (!element) return null;
+  const seen = new Set();
+  const visit = (value, depth) => {
+    const direct = projectUrlInValue(value);
+    if (direct || !value || typeof value !== 'object' || depth <= 0 || seen.has(value)) {
+      return direct;
+    }
+    seen.add(value);
+    let inspected = 0;
+    for (const [key, child] of Object.entries(value)) {
+      if (++inspected > 80) break;
+      if (typeof child === 'function' || /^__(?:reactFiber|reactContainer)/i.test(key)) continue;
+      const found = visit(child, depth - 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const key of Object.keys(element)) {
+    if (!key.startsWith('__reactProps$')) continue;
+    const found = visit(element[key], 4);
+    if (found) return found;
+  }
+  return null;
+}
+
+function projectUrlFromControl(element) {
+  if (!element) return null;
+  const nodes = [
+    element,
+    element.closest?.('a[href]'),
+    element.querySelector?.('a[href]'),
+  ].filter(Boolean);
+  for (const node of nodes) {
+    const direct = currentProjectUrl(node.href) || projectUrlInValue(node.href);
+    if (direct) return direct;
+    const attributeNames = node.getAttributeNames?.() || [
+      'href',
+      'data-href',
+      'data-url',
+      'data-project-id',
+      'data-gizmo-id',
+      'id',
+    ];
+    for (const attribute of attributeNames) {
+      const found = projectUrlInValue(node.getAttribute?.(attribute));
+      if (found) return found;
+    }
+    const reactUrl = projectUrlFromReactProps(node);
+    if (reactUrl) return reactUrl;
+  }
+  return null;
+}
+
+function projectControlDebugSummary(element) {
+  if (!PARALLAX_DEBUG || !element) return '';
+  const attributes = Object.fromEntries(
+    (element.getAttributeNames?.() || [])
+      .slice(0, 20)
+      .map((name) => [name, String(element.getAttribute(name) || '').slice(0, 160)]),
+  );
+  return JSON.stringify({
+    tag: element.tagName || '',
+    labels: projectControlLabels(element),
+    attributes,
+    route: projectUrlFromControl(element),
+    html: String(element.outerHTML || '').slice(0, 600),
+  });
+}
+
+function projectControlForName(projectName) {
+  const wanted = String(projectName || '').trim().toLowerCase();
+  if (!wanted) return null;
+  return [...document.querySelectorAll('a[href],button,[role="button"]')]
+    .map((control) => {
+      if (control.disabled || control.getAttribute?.('aria-disabled') === 'true') return null;
+      const rect = control.getBoundingClientRect?.();
+      if (rect && (rect.width <= 0 || rect.height <= 0)) return null;
+      const labels = projectControlLabels(control).map((label) => label.toLowerCase());
+      if (!labels.some((label) => label === wanted || label.startsWith(`${wanted} `))) return null;
+      if (labels.some((label) => /\b(?:options?|menu|more|edit|delete)\b/i.test(label))) return null;
+      const route = projectUrlFromControl(control);
+      let score = route ? 100 : 0;
+      if (String(control.tagName || '').toLowerCase() === 'a') score += 30;
+      if (labels.some((label) => label === wanted)) score += 20;
+      return { control, score };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score)[0]?.control || null;
+}
+
+function projectLinkForName(projectName) {
+  const control = projectControlForName(projectName);
+  return control && projectUrlFromControl(control) ? control : null;
+}
+
+function projectNewChatControl(projectName) {
+  const project = projectControlForName(projectName);
+  if (!project) return null;
+  const scopes = [
+    project,
+    project.parentElement,
+    project.closest?.('[class*="project-unfurl-row"],li'),
+  ].filter(Boolean);
+  const candidates = [...new Set(scopes.flatMap((scope) => (
+    [...(scope.querySelectorAll?.('button,[role="button"]') || [])]
+  )))].filter((control) => (
+    control !== project &&
+    !control.disabled &&
+    control.getAttribute?.('aria-disabled') !== 'true' &&
+    elementIsVisible(control)
+  ));
+  const description = (control) => [
+    ...projectControlLabels(control),
+    control.getAttribute?.('data-testid'),
+    control.getAttribute?.('data-tooltip'),
+  ].filter(Boolean).join(' ');
+  const named = candidates.find((control) => (
+    /\b(?:new|start|create)\b.*\b(?:chat|conversation)\b|\b(?:chat|conversation)\b.*\b(?:new|start|create)\b/i
+      .test(description(control))
+  ));
+  if (named) return named;
+
+  // ChatGPT currently renders two icon-only actions at the right edge of an
+  // expanded project row: new-chat first, overflow second. Reject the overflow
+  // action by semantics, then take the leftmost remaining icon button.
+  return candidates
+    .filter((control) => !/\b(?:more|menu|options?|delete|remove)\b/i.test(description(control)))
+    .sort((left, right) => {
+      const leftRect = left.getBoundingClientRect?.();
+      const rightRect = right.getBoundingClientRect?.();
+      return (leftRect?.left || 0) - (rightRect?.left || 0);
+    })[0] || null;
+}
+
+function elementIsVisible(element) {
+  if (!element) return false;
+  const rect = element.getBoundingClientRect?.();
+  return !rect || (rect.width > 0 && rect.height > 0);
+}
+
+function findProjectControl(pattern, scope = document) {
+  return [...scope.querySelectorAll(
+    'button,a,[role="button"],[role="menuitem"],[role="menuitemradio"],[role="option"],[role="radio"],[role="combobox"]',
+  )]
+    .find((element) => {
+      if (!projectControlLabels(element).some((label) => pattern.test(label))) return false;
+      if (element.disabled || element.getAttribute('aria-disabled') === 'true') return false;
+      return elementIsVisible(element);
+    }) || null;
+}
+
+function projectCreationRoot() {
+  const namedContainers = [...document.querySelectorAll('[role="dialog"],dialog')];
+  const explicit = namedContainers.find((element) => (
+    elementIsVisible(element) &&
+    projectControlLabels(element).some((label) => /\bcreate project\b/i.test(label))
+  ));
+  if (explicit) return explicit;
+
+  const headings = [...document.querySelectorAll('h1,h2,h3,[role="heading"]')]
+    .filter((element) => (
+      elementIsVisible(element) &&
+      projectControlLabels(element).some((label) => /^create project$/i.test(label))
+    ));
+  for (const heading of headings) {
+    let candidate = heading.parentElement;
+    while (candidate && candidate !== document.body) {
+      const hasField = candidate.querySelector?.(
+        'input,textarea,[contenteditable="true"],[role="textbox"]',
+      );
+      const hasCreate = [...(candidate.querySelectorAll?.(
+        'button,[role="button"]',
+      ) || [])].some((control) => (
+        projectControlLabels(control).some((label) => /^create project$/i.test(label))
+      ));
+      if (hasField && hasCreate) return candidate;
+      candidate = candidate.parentElement;
+    }
+  }
+  return null;
+}
+
+function projectTextFields(scope) {
+  if (!scope) return [];
+  return [...scope.querySelectorAll(
+    'input,textarea,[contenteditable="true"],[role="textbox"]',
+  )].filter(elementIsVisible);
+}
+
+function projectNameInput() {
+  const dialog = projectCreationRoot();
+  if (!dialog) return null;
+  const inputs = projectTextFields(dialog);
+  return inputs.find((input) => {
+    const description = [
+      input.getAttribute('aria-label'),
+      input.getAttribute('placeholder'),
+      input.getAttribute('name'),
+      input.getAttribute('data-testid'),
+    ].filter(Boolean).join(' ');
+    return /project.*name|name.*project/i.test(description);
+  }) || (inputs.length === 1 ? inputs[0] : null);
+}
+
+function projectMemoryControl(scope = projectCreationRoot() || document) {
+  return findProjectControl(/^(?:default|project-only) memory/i, scope);
+}
+
+async function selectProjectOnlyMemory() {
+  let root = projectCreationRoot();
+  if (!root) throw new Error('ChatGPT did not expose the new-project controls.');
+  let trigger = projectMemoryControl(root);
+  if (!trigger) throw new Error('Could not find ChatGPT’s project-memory selector.');
+  if (projectControlLabels(trigger).some((label) => /^project-only memory/i.test(label))) {
+    return trigger;
+  }
+
+  wlog('project setup: opening memory selector');
+  realClick(trigger);
+  const option = await waitForDom(
+    () => findProjectControl(/^project-only memory/i, document),
+    15000,
+  );
+  if (!option) throw new Error('Could not select Project-only memory.');
+  realClick(option);
+
+  trigger = await waitForDom(() => {
+    root = projectCreationRoot();
+    const current = root ? projectMemoryControl(root) : null;
+    return current && projectControlLabels(current)
+      .some((label) => /^project-only memory/i.test(label))
+      ? current
+      : null;
+  }, 10000);
+  if (!trigger) throw new Error('ChatGPT did not confirm Project-only memory.');
+  wlog('project setup: Project-only memory confirmed');
+  return trigger;
+}
+
+function projectFormDebugSummary() {
+  if (!PARALLAX_DEBUG) return '';
+  const root = projectCreationRoot();
+  const fields = projectTextFields(root || document).map((input) => ({
+    tag: input.tagName,
+    ariaLabel: input.getAttribute?.('aria-label') || '',
+    placeholder: input.getAttribute?.('placeholder') || '',
+    role: input.getAttribute?.('role') || '',
+  }));
+  const controls = [...(root || document).querySelectorAll(
+    'button,[role="button"],[role="menuitemradio"],[role="option"],[role="combobox"]',
+  )].filter(elementIsVisible).map((control) => projectControlLabels(control)[0] || '').filter(Boolean);
+  return JSON.stringify({ root: root?.tagName || null, fields, controls });
+}
+
+async function ensureChatGPTProject(projectName, requestId) {
+  const name = String(projectName || '').trim();
+  if (!name || !requestId) return;
+  projectSetupActive = true;
+  if (modelMenuSeedTimer) {
+    clearTimeout(modelMenuSeedTimer);
+    modelMenuSeedTimer = null;
+  }
+  try {
+    const openExisting = async () => {
+      const existing = projectControlForName(name);
+      if (!existing) return null;
+      wlog(`project setup: existing control ${projectControlDebugSummary(existing)}`);
+      let url = projectUrlFromControl(existing);
+      if (!url) {
+        if (existing.getAttribute?.('aria-expanded') !== 'true') {
+          wlog(`project setup: expanding existing project "${name}"`);
+          realClick(existing);
+        }
+        const newChat = await waitForDom(() => projectNewChatControl(name), 10000);
+        if (!newChat) {
+          throw new Error(`ChatGPT did not expose the new-chat button for project "${name}".`);
+        }
+        wlog(`project setup: clicking new chat in "${name}"`);
+        realClick(newChat);
+        url = await waitForDom(() => currentProjectUrl(), 20000);
+      }
+      if (!url) throw new Error(`ChatGPT did not open project "${name}".`);
+      return url;
+    };
+
+    let existingUrl = await openExisting();
+    if (existingUrl) {
+      postToBg({ type: 'project_ready', requestId, projectName: name, url: existingUrl });
+      return;
+    }
+
+    let input = projectNameInput();
+    if (!input) {
+      let trigger = findProjectControl(/^new project$/i);
+      if (!trigger) {
+        const openSidebar = findProjectControl(/^open sidebar$/i);
+        if (openSidebar) realClick(openSidebar);
+        const sidebarTarget = await waitForDom(
+          () => projectControlForName(name) || findProjectControl(/^new project$/i),
+          10000,
+        );
+        if (sidebarTarget) existingUrl = await openExisting();
+        if (existingUrl) {
+          postToBg({ type: 'project_ready', requestId, projectName: name, url: existingUrl });
+          return;
+        }
+        trigger = findProjectControl(/^new project$/i);
+      }
+      if (!trigger) throw new Error('Could not find ChatGPT’s New project control.');
+      wlog('project setup: opening Create project form');
+      realClick(trigger);
+      input = await waitForDom(projectNameInput, 15000);
+    }
+    if (!input) {
+      wlog(`project setup: form lookup failed ${projectFormDebugSummary()}`);
+      throw new Error('ChatGPT did not open the new-project form.');
+    }
+    wlog(`project setup: name field found (${input.tagName.toLowerCase()})`);
+    const inserted = setComposerText(input, name);
+    if (!sameComposerText(inserted, name)) {
+      throw new Error('ChatGPT did not accept the project name.');
+    }
+    wlog(`project setup: name set to "${name}"`);
+
+    await selectProjectOnlyMemory();
+
+    // The memory menu may re-render the form. Re-read the field and make sure the
+    // controlled value survived before enabling Create project.
+    input = projectNameInput();
+    if (!input) throw new Error('ChatGPT removed the project name field.');
+    if (!sameComposerText(composerText(input), name)) setComposerText(input, name);
+    if (!sameComposerText(composerText(input), name)) {
+      throw new Error('ChatGPT cleared the project name while choosing memory.');
+    }
+
+    const dialog = projectCreationRoot();
+    if (!dialog) throw new Error('ChatGPT removed the new-project form.');
+    const create = await waitForDom(
+      () => findProjectControl(/^create(?: project)?$/i, dialog),
+      15000,
+    );
+    if (!create) throw new Error('ChatGPT did not enable the Create project button.');
+    wlog('project setup: clicking Create project');
+    realClick(create);
+
+    const url = await waitForDom(() => {
+      const route = currentProjectUrl();
+      if (route) return route;
+      const link = projectLinkForName(name);
+      return link ? projectUrlFromControl(link) : null;
+    }, 60000);
+    if (!url) throw new Error(`ChatGPT did not finish creating project "${name}".`);
+    postToBg({ type: 'project_ready', requestId, projectName: name, url });
+  } catch (error) {
+    postToBg({
+      type: 'project_error',
+      requestId,
+      projectName: name,
+      message: error?.message || `Could not create ChatGPT project "${name}".`,
+    });
+  } finally {
+    projectSetupActive = false;
+    scheduleModelMenuSeed();
+  }
+}
+
 // DOM-only model + intelligence switching: click through ChatGPT's own menu, the
 // same way a person would. No slugs exist in the menu DOM, so this is the only way
 // to change the model. Every requested value is confirmed from ChatGPT's checked
@@ -698,7 +1136,11 @@ function realClick(el) {
   try { el.dispatchEvent(new MouseEvent('mousedown', { ...o, button: 0 })); } catch (_) {}
   try { el.dispatchEvent(new PointerEvent('pointerup', { ...o, button: 0, pointerId: 1 })); } catch (_) {}
   try { el.dispatchEvent(new MouseEvent('mouseup', { ...o, button: 0 })); } catch (_) {}
-  el.dispatchEvent(new MouseEvent('click', o));
+  // HTMLElement.click() runs the element's activation behavior as well as its
+  // click listeners. dispatchEvent alone can notify React while failing to
+  // activate a routed button, which is exactly what left project rows in place.
+  if (typeof el.click === 'function') el.click();
+  else el.dispatchEvent(new MouseEvent('click', o));
 }
 
 function composerText(input) {
@@ -759,6 +1201,31 @@ function clearComposerIfMatches(input, injectedText) {
   const currentInput = find(SELECTORS.input);
   if (!currentInput || currentInput !== input) return;
   if (sameComposerText(composerText(currentInput), injectedText)) setComposerText(currentInput, '');
+}
+
+function renderedUserPromptExists(text) {
+  const expected = compactMessageText(text);
+  if (!expected) return false;
+  return [...document.querySelectorAll('[data-message-author-role="user"]')]
+    .some((element) => compactMessageText(renderedMessageText(element)) === expected);
+}
+
+function composerDebugSummary() {
+  if (!PARALLAX_DEBUG) return '';
+  const candidates = SELECTORS.input.flatMap((selector) =>
+    [...document.querySelectorAll(selector)].map((element) => {
+      const rect = element.getBoundingClientRect?.();
+      return {
+        selector,
+        tag: element.tagName,
+        id: element.id || '',
+        role: element.getAttribute?.('role') || '',
+        contenteditable: element.getAttribute?.('contenteditable') || '',
+        visible: !rect || (rect.width > 0 && rect.height > 0),
+      };
+    }),
+  );
+  return JSON.stringify({ candidates });
 }
 
 function openModelSubmenu(modelRow) {
@@ -860,7 +1327,7 @@ async function selectModelViaDom(model, intelligence) {
       return fail(message);
     }
 
-    console.log('[Parallax] switch → model:', model || '(keep)', '| intelligence:', intelligence || '(keep)');
+    debugLog('switch → model:', model || '(keep)', '| intelligence:', intelligence || '(keep)');
     if (!document.querySelector('[data-testid="composer-intelligence-picker-content"]')) {
       openModelMenu(trigger);
     }
@@ -911,7 +1378,7 @@ async function selectModelViaDom(model, intelligence) {
           return await finish(fail(message, state));
         }
         realClick(target);
-        console.log('[Parallax] switch: clicked model', model);
+        debugLog('switch: clicked model', model);
         // Selecting a model may close the whole popup. Reopen it and verify the
         // fresh current-model row instead of reading the detached clicked node.
         await waitForDom(
@@ -971,7 +1438,7 @@ async function selectModelViaDom(model, intelligence) {
           wlog(`switch FAILED: ${message}`);
           return await finish(fail(message, state));
         }
-        console.log('[Parallax] switch: confirmed intelligence', intelligence);
+        debugLog('switch: confirmed intelligence', intelligence);
       } else {
         const state = scrapeModelMenu(true);
         const visible = radios.filter((r) => r.offsetParent !== null).map((r) => rowLabel(r)).join(' | ');
@@ -995,7 +1462,7 @@ async function selectModelViaDom(model, intelligence) {
       currentIntelligence: state?.currentIntelligence || requested.intelligence,
     });
   } catch (e) {
-    console.warn('[Parallax] selectModelViaDom failed:', e);
+    debugLog('selectModelViaDom failed:', e);
     return fail(e?.message || 'Unexpected error while changing the ChatGPT model.');
   }
 }
@@ -1009,7 +1476,7 @@ function reportSelectionError(result) {
   });
 }
 
-// ChatGPT conversation id out of a URL: https://chatgpt.com/c/<id> → "<id>".
+// ChatGPT conversation id out of either a global or project chat URL.
 function conversationId(url) {
   return globalThis.ParallaxProtocolCore?.conversationId(url) || null;
 }
@@ -1149,6 +1616,7 @@ async function sendMessageToChatGPT(text, msgId, model, intelligence, expectUrl)
     let injectedText = '';
     let accepted = false;
     for (let attempt = 0; attempt < 2 && !accepted; attempt++) {
+      wlog(`composer wait msgId=${msgId} attempt=${attempt + 1}`);
       // A recovered task tab can report "complete" before ChatGPT has hydrated the
       // composer. Wait until the live editor both exists and accepts the exact
       // text; an early placeholder node can be replaced during hydration.
@@ -1160,7 +1628,10 @@ async function sendMessageToChatGPT(text, msgId, model, intelligence, expectUrl)
           ? { input: candidate, injectedText: inserted }
           : null;
       }, 30000);
-      if (!prepared) break;
+      if (!prepared) {
+        wlog(`composer unavailable msgId=${msgId} ${composerDebugSummary()}`);
+        break;
+      }
       input = prepared.input;
       injectedText = prepared.injectedText;
 
@@ -1198,7 +1669,7 @@ async function sendMessageToChatGPT(text, msgId, model, intelligence, expectUrl)
     wlog(`submit accepted msgId=${msgId}`);
     postToBg({ type: 'sent', msgId, url: window.location.href });
 
-    console.log('[Parallax] waiting for network response');
+    debugLog('waiting for network response');
     const outcome = await Promise.race([
       netDone.then(() => ({ kind: 'net' })),
       sleep(180000).then(() => ({ kind: 'timeout' })),
@@ -1245,7 +1716,65 @@ async function sendMessageToChatGPT(text, msgId, model, intelligence, expectUrl)
       const next = pendingSend;
       pendingSend = null;
       sendMessageToChatGPT(next.text, next.msgId, next.model, next.intelligence, next.expectUrl);
+    } else {
+      scheduleModelMenuSeed();
     }
+  }
+}
+
+async function resumePendingTurn({
+  msgId,
+  text,
+  model,
+  intelligence,
+  expectUrl,
+  files,
+  attachmentsLost,
+}) {
+  if (!msgId) return;
+  if (currentSend?.msgId === msgId) {
+    sending = true;
+    wlog(`pending turn still active after page-bridge reconnect msgId=${msgId}`);
+    return;
+  }
+  if (renderedUserPromptExists(text)) {
+    wlog(`pending turn was already rendered before reconnect msgId=${msgId} — refusing duplicate`);
+    postToBg({ type: 'sent', msgId, url: window.location.href });
+    postToBg({
+      type: 'error',
+      source: 'page-recovery',
+      message: 'ChatGPT accepted the message before its page reloaded, but the response stream could not be recovered safely.',
+      msgId,
+      url: window.location.href,
+    });
+    return;
+  }
+  if (attachmentsLost) {
+    postToBg({
+      type: 'error',
+      source: 'page-recovery',
+      message: 'The ChatGPT page reloaded before the attached files were submitted. Send the message again to retry safely.',
+      msgId,
+      url: window.location.href,
+    });
+    return;
+  }
+
+  wlog(`retrying unaccepted turn after page-bridge reconnect msgId=${msgId}`);
+  const filesReady = Array.isArray(files) && files.length
+    ? uploadTask.catch(() => {}).then(() => handleSendFiles(files))
+    : uploadTask;
+  uploadTask = filesReady.catch(() => {});
+  try {
+    await filesReady;
+    await sendMessageToChatGPT(text, msgId, model, intelligence, expectUrl);
+  } catch (error) {
+    postToBg({
+      type: 'error',
+      message: error?.message || 'Could not resume the pending message.',
+      msgId,
+      url: window.location.href,
+    });
   }
 }
 
@@ -1625,7 +2154,7 @@ function postToBg(msg) {
     try {
       backgroundPort.postMessage(msg);
     } catch (e) {
-      console.error('[Parallax] postToBg failed:', e);
+      debugLog('postToBg failed:', e);
       if (pendingOutbox.length < 100) pendingOutbox.push(msg);
     }
   } else {
@@ -1638,26 +2167,14 @@ function postToBg(msg) {
 // stream as the renderer/main/extension events — always on. Never queued: a log
 // line isn't worth buffering if the port is momentarily down.
 function wlog(msg, extra) {
+  if (!PARALLAX_DEBUG) return;
   try { if (backgroundPort) backgroundPort.postMessage({ type: 'log', msg, extra }); } catch (_) {}
-  if (extra !== undefined) console.log('[Parallax]', msg, extra); else console.log('[Parallax]', msg);
+  if (extra !== undefined) debugLog(msg, extra); else debugLog(msg);
 }
 function prev(s, n = 60) {
   if (!s) return '∅';
   const one = String(s).replace(/\s+/g, ' ').trim();
   return `len=${String(s).length} "${one.slice(0, n)}${one.length > n ? '…' : ''}"`;
-}
-
-function showReloadWarning() {
-  const existing = document.getElementById('__parallax_reload_warning');
-  if (existing) return;
-  const banner = document.createElement('div');
-  banner.id = '__parallax_reload_warning';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;text-align:center;padding:8px 16px;font:13px/1.4 -apple-system,sans-serif;cursor:pointer';
-  banner.textContent = '⚠ Parallax extension was reloaded — click to refresh this page';
-  banner.onclick = () => location.reload();
-  document.body.prepend(banner);
-  // Also try to auto-reload after 30s
-  setTimeout(() => { if (document.getElementById('__parallax_reload_warning')) location.reload(); }, 30000);
 }
 
 if (document.readyState === 'loading') {

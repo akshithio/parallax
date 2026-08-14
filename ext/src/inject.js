@@ -7,6 +7,7 @@
 (function () {
   if (window.__parallaxNetHooked) return;
   window.__parallaxNetHooked = true;
+  const debug = globalThis.__parallaxBuildConfig?.debug === true;
 
   // ARMED ONLY DURING A PARALLAX TURN. Everything below — teeing response streams,
   // is inert unless the desktop is actually mid-send in this tab. When you use
@@ -37,7 +38,7 @@
 
   function post(turnId, text, done, completion) {
     try {
-      if (done) console.log('[Parallax] net response complete, chars:', String(text || '').length);
+      if (debug && done) console.log('[Parallax] net response complete, chars:', String(text || '').length);
       window.postMessage({
         __parallax_net: true,
         source: 'network',
@@ -74,6 +75,7 @@
 
   function postDebug(msg) {
     try {
+      if (!debug) return;
       console.log('[Parallax][net]', msg);
       window.postMessage({ __parallax_net_debug: true, sample: msg }, '*');
     } catch {}

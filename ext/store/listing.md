@@ -17,8 +17,9 @@ signed in, then return the response to the matching Parallax thread.
 
 What it does:
 
+- creates or reuses one ChatGPT Project named `plx-{folder name}` for each local folder
 - creates a separate inactive ChatGPT task tab for each Parallax thread
-- sends only prompts and attachments you initiate in the desktop app
+- sends prompts and attachments you initiate in the desktop app
 - returns streamed replies to the correct desktop thread
 - keeps the desktop connection on a local WebSocket
 - reconnects task tabs after an extension update without taking over your active tab
@@ -45,9 +46,10 @@ return their responses to the matching desktop threads.
 
 ## Permission justifications
 
-- `storage`: Store the local WebSocket address and status plus the mapping between
-  Parallax threads and their ChatGPT task tabs so the bridge can recover after a
-  browser or service-worker restart.
+- `storage`: Store the local WebSocket address and status, the mapping between
+  Parallax threads and their ChatGPT task tabs, and the local folder-to-ChatGPT-
+  Project mapping so the bridge can recover after a browser or service-worker
+  restart.
 - `alarms`: Wake the Manifest V3 service worker periodically so it can restore the
   local desktop connection after Chrome suspends it.
 - `scripting`: Reinstall the isolated page bridge after an extension reload when
@@ -62,9 +64,11 @@ The extension does not use remotely hosted code.
 
 The extension handles website content and user activity only for the task the
 user starts in Parallax. This includes the prompt, selected attachments, streamed
-reply, task-tab URL and conversation identifier, and model choice. It does not
-sell data or use data for advertising or credit decisions. See the public privacy
-policy for storage, transfer, retention, and deletion details.
+reply, task-tab URL and conversation identifier, model choice, local folder path,
+generated `plx-` project name, and ChatGPT Project URL. The full local folder path
+stays in the local desktop-to-extension bridge and is not entered into ChatGPT. It
+does not sell data or use data for advertising or credit decisions. See the public
+privacy policy for storage, transfer, retention, and deletion details.
 
 ## Test instructions
 
@@ -72,9 +76,11 @@ policy for storage, transfer, retention, and deletion details.
 2. Open ChatGPT in the same Chrome profile and sign in with a test account.
 3. Open the Parallax extension popup and enable the local bridge.
 4. In Parallax, open any local folder and create a thread.
-5. Send a short prompt from that thread.
-6. Confirm that Parallax opens an inactive ChatGPT task tab and returns the reply
-   to the same desktop thread.
+5. Create a new thread in that folder and confirm ChatGPT creates or reuses a
+   Project named `plx-{folder name}`.
+6. Send a short prompt from that thread.
+7. Confirm that Parallax opens an inactive ChatGPT task tab inside that Project
+   and returns the reply to the same desktop thread.
 
 No developer-provided test credentials are required. The reviewer can use a
 ChatGPT test account available to them.

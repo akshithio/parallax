@@ -16,15 +16,44 @@ function subscribe(channel, cb) {
 }
 
 contextBridge.exposeInMainWorld('parallax', {
-  send: (text, model, intelligence, wireText, silent, expectUrl, convId, msgId) =>
-    ipcRenderer.send('send-message', { text, model, intelligence, wireText, silent, expectUrl, convId, msgId }),
+  send: (
+    text,
+    model,
+    intelligence,
+    wireText,
+    silent,
+    expectUrl,
+    convId,
+    msgId,
+    projectKey,
+    projectName,
+  ) => ipcRenderer.send('send-message', {
+    text,
+    model,
+    intelligence,
+    wireText,
+    silent,
+    expectUrl,
+    convId,
+    msgId,
+    projectKey,
+    projectName,
+  }),
   editMessage: (payload) => ipcRenderer.send('edit-message', payload),
-  sendFiles: (convId, files) => ipcRenderer.send('send-files', { convId, files }),
+  sendFiles: (convId, files, projectKey, projectName) =>
+    ipcRenderer.send('send-files', { convId, files, projectKey, projectName }),
   debugDom: () => ipcRenderer.send('debug-dom'),
-  newChat: (convId) => ipcRenderer.send('new-chat', { convId }),
+  newChat: (convId, projectKey, projectName) =>
+    ipcRenderer.send('new-chat', { convId, projectKey, projectName }),
   navigate: (url, convId) => ipcRenderer.send('navigate', { url, convId }),
-  switchModel: (model, intelligence, convId) =>
-    ipcRenderer.send('switch-model', { model, intelligence, convId }),
+  switchModel: (model, intelligence, convId, projectKey, projectName) =>
+    ipcRenderer.send('switch-model', {
+      model,
+      intelligence,
+      convId,
+      projectKey,
+      projectName,
+    }),
   log: (scope, msg, extra) => ipcRenderer.send('parallax-log', { scope, msg, extra }),
 
   saveData: (data) => ipcRenderer.invoke('save-data', data),

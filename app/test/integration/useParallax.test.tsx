@@ -1,7 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import useParallax, { type Conversation } from '../../hooks/useParallax'
-import { HARNESS_PROTOCOL_VERSION } from '../../lib/systemPrompt'
 import { createParallaxBridge } from '../helpers/parallaxBridge'
 
 const URL_A = 'https://chatgpt.com/c/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -39,6 +38,8 @@ describe('useParallax transport integration', () => {
     expect(result.current.conversations['thread-a'].messages).toHaveLength(1)
     const call = bridge.api.send.mock.calls[0]
     const msgId = call[7]
+    expect(call[8]).toBe('/tmp/thread-a')
+    expect(call[9]).toBe('plx-thread-a')
     expect(result.current.conversations['thread-a'].messages[0]).toMatchObject({
       role: 'user',
       text: 'Inspect this repository.',
@@ -65,6 +66,141 @@ describe('useParallax transport integration', () => {
       })
     })
     expect(result.current.conversations['thread-a'].messages).toHaveLength(1)
+  })
+
+  test('ends an orphaned Thinking state after extension turn reconciliation', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => result.current.send('hi'))
+    const msgId = bridge.api.send.mock.calls[0][7]
+    expect(result.current.currentConversationSending).toBe(true)
+
+    act(() => {
+      bridge.emit('status', {
+        type: 'turns',
+        turns: [{ convId: 'thread-a', msgId, accepted: false }],
+      })
+    })
+    expect(result.current.currentConversationSending).toBe(true)
+
+    act(() => bridge.emit('status', { type: 'turns', turns: [] }))
+    await waitFor(() => expect(result.current.currentConversationSending).toBe(false))
+    expect(result.current.conversations['thread-a'].messages[0].delivery).toBe('failed')
+    expect(result.current.errorMessage).toContain('browser turn was interrupted')
+  })
+
+  test('does not interrupt the agent loop when a completed browser turn is settled', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => result.current.send('Inspect this repository.'))
+    const firstMsgId = bridge.api.send.mock.calls[0][7]
+
+    act(() => {
+      bridge.emit('status', {
+        type: 'turns',
+        turns: [{ convId: 'thread-a', msgId: firstMsgId, accepted: true }],
+      })
+      bridge.emit('response', {
+        convId: 'thread-a',
+        msgId: firstMsgId,
+        url: URL_A,
+        text: '{plx:note}Reading the repository structure{/plx:note}{plx:run}ls -la{/plx:run}',
+      })
+      bridge.emit('status', { type: 'turns', turns: [] })
+    })
+
+    expect(result.current.currentConversationSending).toBe(true)
+    expect(result.current.errorMessage).toBeNull()
+    expect(bridge.api.stopGenerating).not.toHaveBeenCalled()
+
+    await waitFor(() => expect(bridge.api.send).toHaveBeenCalledTimes(2))
+    const continuationMsgId = bridge.api.send.mock.calls[1][7]
+    act(() => {
+      bridge.emit('status', {
+        type: 'turns',
+        turns: [{ convId: 'thread-a', msgId: continuationMsgId, accepted: true }],
+      })
+      bridge.emit('response', {
+        convId: 'thread-a',
+        msgId: continuationMsgId,
+        url: URL_A,
+        text: '{plx:done}Finished.{/plx:done}',
+      })
+      bridge.emit('status', { type: 'turns', turns: [] })
+    })
+
+    await waitFor(() => expect(result.current.currentConversationSending).toBe(false))
+    expect(result.current.errorMessage).toBeNull()
+  })
+
+  test('ends Thinking when a browser turn never reports a terminal state', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    vi.useFakeTimers()
+    try {
+      act(() => result.current.send('hi'))
+      expect(result.current.currentConversationSending).toBe(true)
+
+      act(() => vi.advanceTimersByTime(5 * 60 * 1000))
+
+      expect(result.current.currentConversationSending).toBe(false)
+      expect(result.current.conversations['thread-a'].messages[0].delivery).toBe('failed')
+      expect(result.current.errorMessage).toContain('browser turn stopped responding')
+      expect(bridge.api.stopGenerating).toHaveBeenCalledWith('thread-a')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('keeps a folder-backed draft local until its first message is sent', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => result.current.newConversation('/Users/example/Developer/parallax'))
+
+    expect(bridge.api.newChat).not.toHaveBeenCalled()
+    expect(bridge.api.send).not.toHaveBeenCalled()
+
+    act(() => result.current.send('Inspect this repository.'))
+
+    expect(bridge.api.send).toHaveBeenCalledTimes(1)
+    const call = bridge.api.send.mock.calls[0]
+    expect(call[8]).toBe('/Users/example/Developer/parallax')
+    expect(call[9]).toBe('plx-parallax')
+  })
+
+  test('keeps attachments local and uploads them with the message send', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+    const files = [{ name: 'notes.txt', data: 'data:text/plain;base64,bm90ZXM=', mime: 'text/plain' }]
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => result.current.sendFiles('thread-a', files))
+
+    expect(bridge.api.sendFiles).not.toHaveBeenCalled()
+    expect(bridge.api.send).not.toHaveBeenCalled()
+
+    act(() => result.current.send('Review the attached file.'))
+
+    expect(bridge.api.sendFiles).toHaveBeenCalledWith(
+      'thread-a',
+      files,
+      '/tmp/thread-a',
+      'plx-thread-a',
+    )
+    expect(bridge.api.send).toHaveBeenCalledTimes(1)
   })
 
   test('queues user messages during an active turn and drains them in order', async () => {
@@ -133,6 +269,43 @@ describe('useParallax transport integration', () => {
     await waitFor(() => expect(bridge.api.send).toHaveBeenCalledTimes(3))
     expect(bridge.api.send.mock.calls[2][0]).toBe('Third request')
     expect(result.current.currentQueuedMessageCount).toBe(0)
+  })
+
+  test('keeps offline messages queued without starting a turn and dispatches them on reconnect', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a', URL_A) }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => {
+      bridge.emit('status', { type: 'ws', status: 'disconnected' })
+    })
+    await waitFor(() => expect(result.current.wsStatus.status).toBe('disconnected'))
+
+    act(() => result.current.send('Wait for the extension'))
+
+    expect(bridge.api.send).not.toHaveBeenCalled()
+    expect(result.current.sending).toBe(false)
+    expect(result.current.currentConversationSending).toBe(false)
+    expect(result.current.currentQueuedMessages.map((message) => message.text)).toEqual([
+      'Wait for the extension',
+    ])
+    expect(result.current.conversations['thread-a'].messages).toHaveLength(0)
+
+    act(() => {
+      bridge.emit('status', { type: 'ws', status: 'connected' })
+    })
+
+    await waitFor(() => expect(bridge.api.send).toHaveBeenCalledTimes(1))
+    expect(bridge.api.send.mock.calls[0][0]).toBe('Wait for the extension')
+    expect(result.current.currentQueuedMessageCount).toBe(0)
+    expect(result.current.currentConversationSending).toBe(true)
+    expect(result.current.conversations['thread-a'].messages).toHaveLength(1)
+    expect(result.current.conversations['thread-a'].messages[0]).toMatchObject({
+      role: 'user',
+      text: 'Wait for the extension',
+      delivery: 'pending',
+    })
   })
 
   test('edits a user message by replacing its branch in the owned browser conversation', async () => {
@@ -254,7 +427,7 @@ describe('useParallax transport integration', () => {
     )
   })
 
-  test('sends a greeting normally and delays the workspace protocol until it is needed', async () => {
+  test('includes the workspace protocol on every first message', async () => {
     const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
     window.parallax = bridge.api
     const { result } = renderHook(() => useParallax())
@@ -263,7 +436,11 @@ describe('useParallax transport integration', () => {
     act(() => result.current.send('hi'))
     const greeting = bridge.api.send.mock.calls[0]
     expect(greeting[0]).toBe('hi')
-    expect(greeting[3]).toBeUndefined()
+    expect(greeting[3]).toContain(`{plx:task}
+hi
+{/plx:task}`)
+    expect(greeting[3]).not.toContain(String.fromCharCode(92, 110))
+    expect(greeting[3]).toContain("You are Parallax's planner in a desktop coding harness")
 
     act(() => {
       bridge.emit('sent', {
@@ -282,38 +459,27 @@ describe('useParallax transport integration', () => {
     act(() => result.current.send('Inspect this repository.'))
     const workspaceRequest = bridge.api.send.mock.calls[1]
     expect(workspaceRequest[0]).toBe('Inspect this repository.')
-    expect(workspaceRequest[3]).toContain('{plx:task}\nInspect this repository.\n{/plx:task}')
-    expect(String(workspaceRequest[3]).length).toBeLessThan(3500)
+    expect(workspaceRequest[3]).toBeUndefined()
   })
 
-  test('refreshes an older browser conversation with the current workspace contract', async () => {
+  test('does not add the workspace prompt to an existing conversation', async () => {
     const existing = {
       ...thread('thread-a', URL_A),
-      protocolReady: true,
+      messages: [
+        { role: 'user' as const, text: 'Earlier message.', delivery: 'sent' as const },
+        { role: 'assistant' as const, text: 'Earlier response.' },
+      ],
     }
     const bridge = createParallaxBridge(data({ 'thread-a': existing }))
     window.parallax = bridge.api
     const { result } = renderHook(() => useParallax())
 
     await waitFor(() => expect(result.current.dataLoaded).toBe(true))
-    act(() => result.current.send('Inspect ../akshith.io for its frontend style.'))
+    act(() => result.current.send('Continue.'))
 
     const request = bridge.api.send.mock.calls[0]
-    expect(request[3]).toContain('not a read boundary')
-    expect(request[3]).toContain('ls ../repo')
-
-    act(() => {
-      bridge.emit('sent', {
-        text: 'Inspect ../akshith.io for its frontend style.',
-        msgId: request[7],
-        convId: 'thread-a',
-      })
-    })
-    await waitFor(() =>
-      expect(result.current.conversations['thread-a'].protocolVersion).toBe(
-        HARNESS_PROTOCOL_VERSION,
-      ),
-    )
+    expect(request[0]).toBe('Continue.')
+    expect(request[3]).toBeUndefined()
   })
 
   test('Manual synchronously presents and denies one shell command at a time', async () => {
@@ -759,6 +925,49 @@ describe('useParallax transport integration', () => {
     expect(call[2]).toBeUndefined()
   })
 
+  test('does not enforce unconfirmed fallback labels on the first send', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => {
+      bridge.emit('selection_error', {
+        convId: 'thread-a',
+        message: 'A stale fallback selection failed.',
+      })
+    })
+    expect(result.current.selectionStatus).toBe('idle')
+    expect(result.current.errorMessage).toBeNull()
+
+    act(() => result.current.send('hi', 'GPT-5.6 Sol', 'Medium'))
+
+    const call = bridge.api.send.mock.calls[0]
+    expect(call[1]).toBeUndefined()
+    expect(call[2]).toBeUndefined()
+  })
+
+  test('retries an explicit intelligence choice when sending', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => result.current.setIntelligenceLevel('High'))
+    expect(bridge.api.switchModel).toHaveBeenCalledWith(
+      undefined,
+      'High',
+      'thread-a',
+      '/tmp/thread-a',
+      'plx-thread-a',
+    )
+
+    act(() => result.current.send('hi', result.current.gptModel, result.current.intelligenceLevel))
+    const call = bridge.api.send.mock.calls[0]
+    expect(call[1]).toBeUndefined()
+    expect(call[2]).toBe('High')
+  })
+
   test('routes out-of-order events by task and rejects temporary conversation URLs', async () => {
     const bridge = createParallaxBridge(
       data({
@@ -793,6 +1002,27 @@ describe('useParallax transport integration', () => {
     expect(result.current.conversations['thread-a'].messages).toHaveLength(0)
     expect(result.current.currentConvId).toBe('thread-a')
     expect(result.current.conversations['thread-b'].chatgptUrl).toBe(URL_B)
+  })
+
+  test('persists a project chat route as its durable conversation link', async () => {
+    const bridge = createParallaxBridge(data({ 'thread-a': thread('thread-a') }))
+    window.parallax = bridge.api
+    const { result } = renderHook(() => useParallax())
+
+    await waitFor(() => expect(result.current.dataLoaded).toBe(true))
+    act(() => {
+      bridge.emit('response', {
+        convId: 'thread-a',
+        url: 'https://chatgpt.com/g/g-p-67710a876dac8191bd024ba6d5725bb8/c/project-chat-id',
+        text: 'Project response.',
+      })
+    })
+
+    await waitFor(() =>
+      expect(result.current.conversations['thread-a'].chatgptUrl).toBe(
+        'https://chatgpt.com/c/project-chat-id',
+      ),
+    )
   })
 
   test('keeps working and unread state attached to the task that owns the response', async () => {

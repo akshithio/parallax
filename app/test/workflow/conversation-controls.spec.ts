@@ -71,7 +71,7 @@ test('queues another message and drains it after authoritative completion', asyn
   await expect(page.getByRole('button', { name: 'Stop generating' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Queue message' })).toBeVisible()
   await page.getByRole('button', { name: 'Queue message' }).click()
-  await expect(page.getByText('1 message queued')).toBeVisible()
+  await expect(page.locator('[data-queued-message-row]')).toHaveCount(1)
   await expect(page.locator('[data-queued-message-preview]')).toHaveText('Second request')
   await expect(page.getByRole('button', { name: 'Stop generating' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Queue message' })).toHaveCount(0)
@@ -100,7 +100,7 @@ test('queues another message and drains it after authoritative completion', asyn
       page.evaluate(() => window.__parallaxHarness.sends.filter((send) => !send.silent).length),
     )
     .toBe(2)
-  await expect(page.getByText('1 message queued')).toHaveCount(0)
+  await expect(page.locator('[data-queued-message-row]')).toHaveCount(0)
   await expect(page.locator('[data-delivery="pending"]')).toContainText('Second request')
   const transcript = await page.locator('[data-parallax-transcript]').innerText()
   expect(transcript.indexOf('First response')).toBeLessThan(transcript.indexOf('Second request'))
@@ -137,24 +137,56 @@ test('edits and deletes a message while it is still queued', async ({ page }) =>
 
   await composer.fill('Second request')
   await page.getByRole('button', { name: 'Queue message' }).click()
-  await expect(page.getByText('1 message queued')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Edit queued message' }).click()
-  await expect(page.getByText('1 message queued')).toHaveCount(0)
-  await expect(composer).toHaveValue('Second request')
-  await expect(page.getByRole('button', { name: 'Queue message' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Stop generating' })).toHaveCount(0)
-
-  await composer.fill('Revised second request')
+  await composer.fill('Third request')
   await page.getByRole('button', { name: 'Queue message' }).click()
-  await expect(page.locator('[data-queued-message-preview]')).toHaveText(
-    'Revised second request',
-  )
+  await expect(page.locator('[data-queued-message-row]')).toHaveCount(2)
+  await expect(page.locator('[data-parallax-transcript]').getByText('Second request')).toHaveCount(0)
+  await expect(page.locator('[data-parallax-transcript]').getByText('Third request')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Delete queued message' }).click()
-  await expect(page.getByText('1 message queued')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Edit queued message 1' }).click()
+  const queuedEditor = page.getByRole('textbox', { name: 'Queued message 1' })
+  await queuedEditor.fill('Revised second request')
+  await page.getByRole('button', { name: 'Save queued message 1' }).click()
+  await expect(page.locator('[data-queued-message-preview]').first()).toHaveText('Revised second request')
+  await expect(composer).toHaveValue('')
+
+  await page.getByRole('button', { name: 'Delete queued message 2' }).click()
+  await expect(page.locator('[data-queued-message-row]')).toHaveCount(1)
+  await expect(page.locator('[data-queued-message-preview]')).toHaveText('Revised second request')
   await expect(composer).toHaveValue('')
   await expect(page.getByRole('button', { name: 'Stop generating' })).toBeVisible()
+})
+
+test('does not show Thinking for a message queued behind another thread', async ({ page }) => {
+  await installWorkflowHarness(page, {
+    conversations: {
+      active: conversation('active', [], { title: 'Active thread' }),
+      waiting: conversation(
+        'waiting',
+        [
+          { role: 'user', text: 'Earlier request', delivery: 'sent' },
+          { role: 'assistant', text: 'Earlier response' },
+        ],
+        { title: 'Waiting thread' },
+      ),
+    },
+    convOrder: ['active', 'waiting'],
+    projects: ['/tmp/workflow-project'],
+  })
+
+  await page.goto('/')
+  const composer = page.getByRole('textbox')
+  await composer.fill('First request')
+  await page.getByRole('button', { name: 'Send message' }).click()
+
+  await page.getByTitle('Waiting thread').click()
+  await composer.fill('Queued for later')
+  await page.getByRole('button', { name: 'Queue message' }).click()
+
+  await expect(page.locator('[data-queued-message-row]')).toHaveCount(1)
+  await expect(page.locator('[data-queued-message-preview]')).toHaveText('Queued for later')
+  await expect(page.getByLabel('Thinking')).toHaveCount(0)
+  await expect(page.locator('[data-parallax-transcript]').getByText('Queued for later')).toHaveCount(0)
 })
 
 test('edits a message across the full transcript width and replaces its branch', async ({ page }) => {

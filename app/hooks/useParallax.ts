@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
-  HARNESS_PROTOCOL_VERSION,
   composeWireMessage,
-  needsHarnessBootstrap,
 } from '../lib/systemPrompt'
-import { normalizeModels } from '../lib/modelGroups'
+import {
+  normalizeCurrentModel,
+  normalizeIntelligenceLabel,
+  normalizeIntelligences,
+  normalizeModels,
+} from '../lib/modelGroups'
+import { chatgptProjectName } from '../lib/utils'
 import {
   parseAgentActions,
   agentActionLabel,
@@ -38,7 +42,7 @@ function canonicalChatgptUrl(raw?: string | null): string | null {
   if (!raw) return null
   try {
     const url = new URL(raw)
-    const match = /^\/c\/([^/?#]+)/.exec(url.pathname)
+    const match = /^\/(?:g\/g-p-[^/?#]+\/)?c\/([^/?#]+)/.exec(url.pathname)
     if (!match) return null
     const id = decodeURIComponent(match[1])
     if (!id || /^WEB:/i.test(id)) return null
@@ -91,12 +95,17 @@ const MODEL_FALLBACK: ModelOption[] = [
   { slug: 'o3', title: 'o3' },
 ]
 
+// The extension's longest normal page turn is three minutes. Leave room for
+// project setup, composer hydration, and submission retries, but never let a
+// renderer-side Thinking state survive a lost extension/main-process lifecycle.
+const TURN_WATCHDOG_MS = 5 * 60 * 1000
+
 export interface AgentCall {
   kind: 'read' | 'list' | 'search' | 'run' | 'write'
   label: string
   status: 'running' | 'ok' | 'error' | 'awaiting' | 'blocked' | 'denied'
   result?: string
-  /** ‹plx:write› only: unified diff of the change, for the diff view in the card. */
+  /** {plx:write} only: unified diff of the change, for the diff view in the card. */
   diff?: string
   /** Target path for read/list/write — lets the card highlight by file extension. */
   path?: string
@@ -135,9 +144,19 @@ export interface Message {
   steps?: MessageStep[]
   /** True while tokens are still arriving — the UI renders these cheaply. */
   streaming?: boolean
+  /** Wall-clock completion time for the terminal response in this user turn. */
+  completedAt?: number
 }
 
 type OutgoingAttachment = { name: string; data: string; mime: string }
+
+function browserProject(folderPath?: string | null) {
+  if (!folderPath) return { projectKey: undefined, projectName: undefined }
+  return {
+    projectKey: folderPath,
+    projectName: chatgptProjectName(folderPath),
+  }
+}
 
 export interface Conversation {
   id: string
@@ -148,10 +167,6 @@ export interface Conversation {
   updatedAt?: number
   /** A completed response arrived while another thread was open. */
   unread?: boolean
-  /** Whether this browser conversation has received the workspace protocol. */
-  protocolReady?: boolean
-  /** Contract revision last delivered to this browser conversation. */
-  protocolVersion?: number
   /** Archived threads stay hidden until restored from Settings. */
   archived?: boolean
 }
@@ -183,18 +198,11 @@ function normalizeLoadedConversations(
               : message.delivery,
         }))
       : []
-    const protocolReady =
-      conversation?.protocolReady ??
-      messages.some((message) =>
-        Boolean(message.calls?.length) ||
-        /(?:^|[<{‹⟨«〈＜〈])\s*plx:(?:note|run|write|done)\b/i.test(message.text || ''),
-      )
     normalized[id] = {
       ...conversation,
       id,
       chatgptUrl,
       messages,
-      protocolReady,
     }
   }
   return normalized
@@ -312,15 +320,32 @@ export default function useParallax() {
   const [gptModel, setGptModelState] = useState<string>(MODEL_FALLBACK[0].slug)
   const [selectionStatus, setSelectionStatus] = useState<ModelSelectionStatus>('idle')
   const confirmedSelectionByConv = useRef<Record<string, ConfirmedModelSelection>>({})
+  // Only values chosen through Parallax belong here. The fallback labels rendered
+  // before ChatGPT's live picker is scraped are presentation defaults, not a
+  // request to change the site's current model or reasoning tier.
+  const requestedSelectionByConv = useRef<Record<string, ConfirmedModelSelection>>({})
   const setGptModel = useCallback((slug: string) => {
     const convId = snap.current.currentConvId
     if (!convId) return
+    requestedSelectionByConv.current = {
+      ...requestedSelectionByConv.current,
+      [convId]: { model: slug },
+    }
     setGptModelState(slug)
     setIntelligenceLevelState('')
     setSelectionStatus('pending')
     try { localStorage.setItem('parallax:model', slug) } catch {}
     // Switch it on this conversation's dedicated ChatGPT tab immediately.
-    try { window.parallax?.switchModel?.(slug, undefined, convId) } catch {}
+    const project = browserProject(snap.current.conversations[convId]?.folderPath)
+    try {
+      window.parallax?.switchModel?.(
+        slug,
+        undefined,
+        convId,
+        project.projectKey,
+        project.projectName,
+      )
+    } catch {}
   }, [])
   // Per-model Intelligence tiers learned from ChatGPT's live menu (title → tiers).
   // Accumulated because ChatGPT only renders the CURRENT model's options at a time.
@@ -333,23 +358,50 @@ export default function useParallax() {
       if (list.length) setAvailableModels(list)
       const rawIntel = localStorage.getItem('parallax:intelByModel')
       const obj = rawIntel ? JSON.parse(rawIntel) : null
-      if (obj && typeof obj === 'object') intelByModel.current = obj
-      const m = localStorage.getItem('parallax:model')
-      if (m) setGptModelState(m)
-      const intelligence = localStorage.getItem('parallax:intelligence')
-      if (intelligence) setIntelligenceLevelState(intelligence)
+      if (obj && typeof obj === 'object') {
+        intelByModel.current = Object.fromEntries(
+          Object.entries(obj).flatMap(([rawModel, rawOptions]) => {
+            const model = normalizeCurrentModel(rawModel)
+            const options = normalizeIntelligences(rawOptions)
+            return model && options.length ? [[model, options]] : []
+          }),
+        )
+        localStorage.setItem('parallax:intelByModel', JSON.stringify(intelByModel.current))
+      }
+      if (!normalizeCurrentModel(localStorage.getItem('parallax:model'))) {
+        localStorage.removeItem('parallax:model')
+      }
+      if (!normalizeIntelligenceLabel(localStorage.getItem('parallax:intelligence'))) {
+        localStorage.removeItem('parallax:intelligence')
+      }
     } catch {}
   }, [])
-  const [intelligenceLevel, setIntelligenceLevelState] = useState('Medium')
+  const [intelligenceLevel, setIntelligenceLevelState] = useState('')
   const setIntelligenceLevel = useCallback((level: string) => {
     const convId = snap.current.currentConvId
     if (!convId) return
+    requestedSelectionByConv.current = {
+      ...requestedSelectionByConv.current,
+      [convId]: {
+        ...requestedSelectionByConv.current[convId],
+        intelligence: level,
+      },
+    }
     setIntelligenceLevelState(level)
     setSelectionStatus('pending')
     try { localStorage.setItem('parallax:intelligence', level) } catch {}
     // Apply the reasoning tier to the current model on the site (model undefined =
     // keep the current model, just change its tier).
-    try { window.parallax?.switchModel?.(undefined, level, convId) } catch {}
+    const project = browserProject(snap.current.conversations[convId]?.folderPath)
+    try {
+      window.parallax?.switchModel?.(
+        undefined,
+        level,
+        convId,
+        project.projectKey,
+        project.projectName,
+      )
+    } catch {}
   }, [])
   // Projects = workspace folders the threads are organized under.
   const [projects, setProjects] = useState<string[]>([])
@@ -365,7 +417,21 @@ export default function useParallax() {
       return
     }
     const confirmed = confirmedSelectionByConv.current[currentConvId]
+    const requested = requestedSelectionByConv.current[currentConvId]
+    if (requested) {
+      if (requested.model || confirmed?.model) {
+        setGptModelState(requested.model || confirmed!.model!)
+      }
+      setIntelligenceLevelState(
+        requested.intelligence !== undefined
+          ? requested.intelligence
+          : confirmed?.intelligence || '',
+      )
+      setSelectionStatus('pending')
+      return
+    }
     if (!confirmed) {
+      setIntelligenceLevelState('')
       setSelectionStatus('idle')
       return
     }
@@ -461,7 +527,6 @@ export default function useParallax() {
   const startNewAssistantTurns = useRef(new Set<string>())
   const agentLoopCounts = useRef(new Map<string, number>())
   const protocolRetryCounts = useRef(new Map<string, number>())
-  const pendingProtocolBootstraps = useRef(new Map<string, string>())
   const streamSnapshotLengths = useRef(new Map<string, number>())
   const activeToolExecutions = useRef(
     new Map<string, { convId: string; callIndex: number }>(),
@@ -483,19 +548,6 @@ export default function useParallax() {
     const timer = setTimeout(() => setExtensionWarningVisible(true), 4000)
     return () => clearTimeout(timer)
   }, [wsStatus.status])
-  // When a send arrives while the extension is offline we DON'T force a new chat or
-  // hang — we hold the message on its own thread and replay it the moment the link
-  // is back, so the user just keeps working in the same conversation.
-  const queuedSend = useRef<{
-    convId: string | null
-    msgId: string
-    text: string
-    model?: string
-    intelligence?: string
-    context?: string
-    wire?: string
-    attachments?: OutgoingAttachment[]
-  } | null>(null)
   type QueuedUserSend = {
     convId: string
     msgId: string
@@ -517,9 +569,6 @@ export default function useParallax() {
   const continuationRetryTimers = useRef(
     new Map<string, ReturnType<typeof setTimeout>>(),
   )
-  const queuedFiles = useRef(
-    new Map<string, { name: string; data: string; mime: string }[]>(),
-  )
   const pendingAttachments = useRef(
     new Map<string, { name: string; data: string; mime: string }[]>(),
   )
@@ -532,11 +581,12 @@ export default function useParallax() {
     wire?: string
     model?: string
     intelligence?: string
+    attachments?: OutgoingAttachment[]
     silent: boolean
+    trackedByExtension?: boolean
   } | null>(null)
   // Guard against a navigate → refuse → navigate loop if something stays wrong.
   const wrongConvRetry = useRef(0)
-  const [queuedNotice, setQueuedNotice] = useState<string | null>(null)
   const sendRef = useRef<(
     text: string,
     model?: string,
@@ -580,6 +630,9 @@ export default function useParallax() {
     queuedAgentContinuations.current.delete(continuation.msgId)
     const expect =
       snap.current.conversations[continuation.convId]?.chatgptUrl || undefined
+    const project = browserProject(
+      snap.current.conversations[continuation.convId]?.folderPath,
+    )
     lastOutgoing.current = {
       convId: continuation.convId,
       msgId: continuation.msgId,
@@ -598,6 +651,8 @@ export default function useParallax() {
       expect,
       continuation.convId,
       continuation.msgId,
+      project.projectKey,
+      project.projectName,
     )
   }
 
@@ -742,6 +797,45 @@ export default function useParallax() {
   }
 
   useEffect(() => {
+    if (!workingConvIds.size) return
+    const timers: Array<ReturnType<typeof setTimeout>> = []
+
+    for (const convId of workingConvIds) {
+      const outgoing = lastOutgoing.current
+      if (
+        !outgoing ||
+        outgoing.convId !== convId ||
+        pendingText.current !== null
+      ) continue
+
+      const timestamp = Number(outgoing.msgId.split('-', 1)[0])
+      const startedAt = Number.isFinite(timestamp) && timestamp > 0
+        ? timestamp
+        : Date.now()
+      const timer = setTimeout(() => {
+        if (!workingConvIdsRef.current.has(convId)) return
+        if (lastOutgoing.current?.msgId !== outgoing.msgId) return
+
+        wlog(`turn watchdog → expired conv=${convId} msgId=${outgoing.msgId}`)
+        window.parallax?.stopGenerating?.(convId)
+        setSending(false, 'turn watchdog expired', convId)
+        if (unconfirmedUserMessages.current.delete(outgoing.msgId)) {
+          setMessageDelivery(convId, outgoing.msgId, 'failed')
+        }
+        outgoing.trackedByExtension = false
+        pendingAttachments.current.delete(convId)
+        if (activeSendConv.current === convId) activeSendConv.current = null
+        setErrorMessage('The browser turn stopped responding. Send the message again to retry.')
+        setTimeout(() => setErrorMessage(null), 8000)
+        scheduleQueuedUserSend()
+      }, Math.max(0, startedAt + TURN_WATCHDOG_MS - Date.now()))
+      timers.push(timer)
+    }
+
+    return () => timers.forEach(clearTimeout)
+  }, [workingConvIds, setSending])
+
+  useEffect(() => {
     if (!window.parallax) {
       hasLoaded.current = true
       setDataLoaded(true)
@@ -776,7 +870,47 @@ export default function useParallax() {
       if (data.type === 'server') {
         setServerStatus({ status: data.status, detail: data.port || data.message || '' })
       } else if (data.type === 'ws') {
+        if (data.status !== 'connected' && lastOutgoing.current) {
+          lastOutgoing.current.trackedByExtension = false
+        }
         setWsStatus({ status: data.status, detail: '' })
+      } else if (data.type === 'turns') {
+        const activeTurns = new Map<string, string>(
+          (Array.isArray(data.turns) ? data.turns : []).flatMap((turn: any) => (
+            typeof turn?.convId === 'string' && typeof turn?.msgId === 'string'
+              ? [[turn.convId, turn.msgId] as [string, string]]
+              : []
+          )),
+        )
+        const outgoing = lastOutgoing.current
+        if (
+          outgoing?.convId &&
+          activeTurns.get(outgoing.convId) === outgoing.msgId
+        ) {
+          outgoing.trackedByExtension = true
+        }
+        if (
+          outgoing &&
+          outgoing.convId &&
+          workingConvIdsRef.current.has(outgoing.convId) &&
+          outgoing.trackedByExtension === true &&
+          activeTurns.get(outgoing.convId) !== outgoing.msgId &&
+          pendingText.current === null
+        ) {
+          const orphanedConvId = outgoing.convId
+          const orphanedMsgId = outgoing.msgId
+          wlog(`turn reconciliation → orphaned conv=${orphanedConvId} msgId=${orphanedMsgId}`)
+          setSending(false, 'extension has no matching active turn', orphanedConvId)
+          if (unconfirmedUserMessages.current.delete(orphanedMsgId)) {
+            setMessageDelivery(orphanedConvId, orphanedMsgId, 'failed')
+          }
+          outgoing.trackedByExtension = false
+          pendingAttachments.current.delete(orphanedConvId)
+          if (activeSendConv.current === orphanedConvId) activeSendConv.current = null
+          setErrorMessage('The browser turn was interrupted before it finished. Send the message again to retry.')
+          setTimeout(() => setErrorMessage(null), 8000)
+          scheduleQueuedUserSend()
+        }
       } else if (data.type === 'chatgpt') {
         const sourceId =
           (typeof data.convId === 'string' && data.convId) ||
@@ -802,9 +936,9 @@ export default function useParallax() {
             setChatgptStatus({ status: 'ready', detail: data.url || '' })
           }
           navigatingToUrl.current = null
-          // Only a durable /c/<id> link belongs in persisted thread state. Saving
-          // "/" or the transient /c/WEB:* address made unrelated drafts share a
-          // fake identity and broke every later send guard.
+          // Only a durable global or project chat link belongs in persisted thread
+          // state. Saving "/" or the transient /c/WEB:* address made unrelated
+          // drafts share a fake identity and broke every later send guard.
           const canonical = canonicalChatgptUrl(data.url)
           if (canonical && sourceId) {
             setConversations(prev => {
@@ -835,6 +969,17 @@ export default function useParallax() {
               canonical ||
               snap.current.conversations[sourceId]?.chatgptUrl ||
               undefined
+            const project = browserProject(
+              snap.current.conversations[sourceId]?.folderPath,
+            )
+            if (outgoing?.attachments?.length) {
+              window.parallax?.sendFiles(
+                sourceId,
+                outgoing.attachments,
+                project.projectKey,
+                project.projectName,
+              )
+            }
             window.parallax?.send(
               text,
               model,
@@ -844,6 +989,8 @@ export default function useParallax() {
               expect,
               sourceId,
               outgoing?.msgId,
+              project.projectKey,
+              project.projectName,
             )
           }
         } else if (data.status === 'navigating') {
@@ -880,21 +1027,6 @@ export default function useParallax() {
         msgId: data.msgId,
         attachments,
       })
-      if (pendingProtocolBootstraps.current.get(data.msgId) === id) {
-        pendingProtocolBootstraps.current.delete(data.msgId)
-        setConversations(prev => {
-          const conv = prev[id]
-          if (!conv) return prev
-          return {
-            ...prev,
-            [id]: {
-              ...conv,
-              protocolReady: true,
-              protocolVersion: HARNESS_PROTOCOL_VERSION,
-            },
-          }
-        })
-      }
     }))
 
     trackListener(window.parallax?.onAgentExecProgress?.((data: any) => {
@@ -920,14 +1052,9 @@ export default function useParallax() {
             .filter((m: any) => m && typeof m.title === 'string' && m.title.trim())
             .map((m: any) => ({ title: m.title.trim(), sublabel: m.sublabel ? String(m.sublabel).trim() : undefined }))
         : []
-      const currentModel = typeof data?.currentModel === 'string' ? data.currentModel.trim() : ''
-      const currentIntelligence =
-        typeof data?.currentIntelligence === 'string' ? data.currentIntelligence.trim() : ''
-      const intelligences: ModelIntelligence[] = Array.isArray(data?.intelligences)
-        ? data.intelligences
-            .filter((i: any) => i && typeof i.label === 'string' && i.label.trim())
-            .map((i: any) => ({ label: i.label.trim(), ...(i.hint ? { hint: String(i.hint).trim() } : {}) }))
-        : []
+      const currentModel = normalizeCurrentModel(data?.currentModel)
+      const currentIntelligence = normalizeIntelligenceLabel(data?.currentIntelligence)
+      const intelligences: ModelIntelligence[] = normalizeIntelligences(data?.intelligences)
 
       // Diagnostic: shows in the Parallax app's DevTools console. If `intel` or
       // `current` are empty here, the extension isn't sending them (scrape/forward
@@ -964,16 +1091,43 @@ export default function useParallax() {
           ...confirmedSelectionByConv.current,
           [sourceConvId]: confirmed,
         }
+        const requested = requestedSelectionByConv.current[sourceConvId]
+        const remainingRequest = requested ? {
+          model:
+            requested.model && requested.model !== confirmed.model
+              ? requested.model
+              : undefined,
+          intelligence:
+            requested.intelligence && requested.intelligence !== confirmed.intelligence
+              ? requested.intelligence
+              : undefined,
+        } : undefined
+        const stillPending = Boolean(
+          remainingRequest?.model || remainingRequest?.intelligence,
+        )
+        if (stillPending) {
+          requestedSelectionByConv.current = {
+            ...requestedSelectionByConv.current,
+            [sourceConvId]: remainingRequest!,
+          }
+        } else if (requested) {
+          const next = { ...requestedSelectionByConv.current }
+          delete next[sourceConvId]
+          requestedSelectionByConv.current = next
+        }
         if (sourceConvId === snap.current.currentConvId) {
-          if (confirmed.model) {
-            setGptModelState(confirmed.model)
-            try { localStorage.setItem('parallax:model', confirmed.model) } catch {}
+          const visibleModel = remainingRequest?.model || confirmed.model
+          const visibleIntelligence =
+            remainingRequest?.intelligence || confirmed.intelligence || ''
+          if (visibleModel) {
+            setGptModelState(visibleModel)
+            try { localStorage.setItem('parallax:model', visibleModel) } catch {}
           }
-          setIntelligenceLevelState(confirmed.intelligence || '')
-          if (confirmed.intelligence) {
-            try { localStorage.setItem('parallax:intelligence', confirmed.intelligence) } catch {}
+          setIntelligenceLevelState(visibleIntelligence)
+          if (visibleIntelligence) {
+            try { localStorage.setItem('parallax:intelligence', visibleIntelligence) } catch {}
           }
-          setSelectionStatus('confirmed')
+          setSelectionStatus(stillPending ? 'pending' : 'confirmed')
         }
       }
     }))
@@ -1001,7 +1155,10 @@ export default function useParallax() {
           setIntelligenceLevelState(confirmed.intelligence || '')
         }
       }
-      if (sourceConvId === snap.current.currentConvId) {
+      if (
+        sourceConvId === snap.current.currentConvId &&
+        requestedSelectionByConv.current[sourceConvId]
+      ) {
         setSelectionStatus('error')
         const message = data?.message || 'Could not apply the selected model or intelligence.'
         setErrorMessage(message)
@@ -1065,10 +1222,25 @@ export default function useParallax() {
         wlog('onResponse DROPPED — missing or unknown convId')
         return
       }
+      const outgoingAtResponse = lastOutgoing.current
+      const completedMsgId =
+        typeof data?.msgId === 'string' && data.msgId
+          ? data.msgId
+          : outgoingAtResponse && outgoingAtResponse.convId === routeId
+            ? outgoingAtResponse.msgId
+            : ''
+      if (
+        completedMsgId &&
+        outgoingAtResponse &&
+        outgoingAtResponse.msgId === completedMsgId
+      ) {
+        outgoingAtResponse.trackedByExtension = false
+      }
       streamSnapshotLengths.current.delete(routeId)
       clearAgentContinuations(routeId)
       function updateOrAdd(convId: string) {
         const startsNewTurn = startNewAssistantTurns.current.delete(convId)
+        const completedAt = Date.now()
         setConversations(prev => {
           const conv = prev[convId]
           if (!conv) return prev
@@ -1083,9 +1255,16 @@ export default function useParallax() {
               notes: undefined,
               calls: undefined,
               steps: undefined,
+              completedAt,
             }
           } else {
-            msgs.push({ role: 'assistant', text: rawText, toolCalls: data.toolCalls || '', streaming: false })
+            msgs.push({
+              role: 'assistant',
+              text: rawText,
+              toolCalls: data.toolCalls || '',
+              streaming: false,
+              completedAt,
+            })
           }
           return {
             ...prev,
@@ -1128,9 +1307,17 @@ export default function useParallax() {
       wlog(`onError ← "${msg}" url=${data?.url || '-'}`)
       setErrorMessage(msg)
       setTimeout(() => setErrorMessage(null), 8000)
+      const outgoingAtError = lastOutgoing.current
       const continuationMsgId =
         data?.msgId ||
-        (lastOutgoing.current?.silent ? lastOutgoing.current.msgId : undefined)
+        (outgoingAtError?.silent ? outgoingAtError.msgId : undefined)
+      if (
+        continuationMsgId &&
+        outgoingAtError &&
+        outgoingAtError.msgId === continuationMsgId
+      ) {
+        outgoingAtError.trackedByExtension = false
+      }
       const failedContinuation = continuationMsgId
         ? pendingAgentContinuations.current.get(continuationMsgId)
         : undefined
@@ -1153,8 +1340,10 @@ export default function useParallax() {
       setSending(false, 'response error', failedConvId || undefined)
       const failedMsgId =
         data?.msgId ||
-        (!lastOutgoing.current?.silent ? lastOutgoing.current?.msgId : undefined)
-      if (failedMsgId) pendingProtocolBootstraps.current.delete(failedMsgId)
+        (!outgoingAtError?.silent ? outgoingAtError?.msgId : undefined)
+      if (failedMsgId && outgoingAtError && outgoingAtError.msgId === failedMsgId) {
+        outgoingAtError.trackedByExtension = false
+      }
       if (
         failedConvId &&
         failedMsgId &&
@@ -1182,12 +1371,13 @@ export default function useParallax() {
     // Navigate to this thread's stored ChatGPT link, then replay the message. This
     // is what guarantees a message can never land in the wrong chat.
     trackListener(window.parallax?.onWrongConversation?.((data: any) => {
+      const trackedOutgoing = lastOutgoing.current
       const pendingContinuation =
         (data?.msgId
           ? pendingAgentContinuations.current.get(data.msgId)
           : undefined) ||
-        (lastOutgoing.current?.silent
-          ? pendingAgentContinuations.current.get(lastOutgoing.current.msgId)
+        (trackedOutgoing?.silent
+          ? pendingAgentContinuations.current.get(trackedOutgoing.msgId)
           : undefined)
       const out = pendingContinuation
         ? {
@@ -1199,7 +1389,10 @@ export default function useParallax() {
             intelligence: undefined,
             silent: true,
           }
-        : lastOutgoing.current
+        : trackedOutgoing
+      if (out?.msgId && trackedOutgoing?.msgId === out.msgId) {
+        trackedOutgoing.trackedByExtension = false
+      }
       // Where this turn SHOULD be. The extension reports it, but the desktop is the
       // real owner of that link — fall back to the thread's stored URL so a missing
       // `expected` can't turn a recoverable navigation into a dead end.
@@ -1314,13 +1507,12 @@ export default function useParallax() {
   // Add a project folder via the native picker, then start a thread inside it.
   async function addProject() {
     const res = await window.parallax?.selectFolder?.()
-    if (!res?.ok || !res.path) return
+    if (!res?.ok || !res.path) return null
     const path: string = res.path
     setProjects(prev => (prev.includes(path) ? prev : [...prev, path]))
-    setTimeout(() => {
-      newConversation(path)
-      setTimeout(save, 0)
-    }, 0)
+    newConversation(path)
+    setTimeout(save, 0)
+    return path
   }
 
   function removeProject(path: string) {
@@ -1403,7 +1595,7 @@ export default function useParallax() {
       ? conv.folderPath.split('/').filter(Boolean).pop() || null
       : null
     const wireText =
-      firstUserMessage && needsHarnessBootstrap(trimmed)
+      firstUserMessage
         ? composeWireMessage(trimmed, folderBase)
         : undefined
     const nextMsgId = newMessageId()
@@ -1476,7 +1668,7 @@ export default function useParallax() {
       : currentConv()
     const intendedConvId = conv?.id ?? targetConvId ?? currentConvId
     if (!intendedConvId || !conv) return
-    if (sendingRef.current && !existingMsgId) {
+    if ((sendingRef.current || wsOfflineRef.current) && !existingMsgId) {
       const msgId = newMessageId()
       queuedUserSends.current.push({
         convId: intendedConvId,
@@ -1491,7 +1683,9 @@ export default function useParallax() {
         ...counts,
         [intendedConvId]: (counts[intendedConvId] || 0) + 1,
       }))
-      wlog(`user message QUEUED conv=${intendedConvId} ${prev(text)}`)
+      wlog(
+        `user message QUEUED conv=${intendedConvId} reason=${wsOfflineRef.current ? 'extension offline' : 'turn active'} ${prev(text)}`,
+      )
       return
     }
     if (sendingRef.current) return
@@ -1504,27 +1698,28 @@ export default function useParallax() {
 
     const folderBase = conv?.folderPath ? conv.folderPath.split('/').filter(Boolean).pop() || null : null
     const outgoing = context ? `${text}\n\n${context}` : text
-    const shouldBootstrap =
-      (!conv?.protocolReady || conv.protocolVersion !== HARNESS_PROTOCOL_VERSION) &&
-      needsHarnessBootstrap(text, context)
+    const firstUserMessage = !conv.messages.some((message) => message.role === 'user')
     const wire = existingWire ?? (
-      shouldBootstrap
+      firstUserMessage
         ? composeWireMessage(outgoing, folderBase)
         : context
           ? outgoing
           : undefined
     )
-    if (shouldBootstrap && convId) {
-      pendingProtocolBootstraps.current.set(msgId, convId)
-    }
+
+    const filesToSend = attachments?.length
+      ? attachments
+      : convId
+        ? pendingAttachments.current.get(convId)
+        : undefined
+    if (filesToSend?.length && convId) pendingAttachments.current.set(convId, filesToSend)
 
     if (!existingMsgId && convId) {
-      const pending = attachments || pendingAttachments.current.get(convId)
       unconfirmedUserMessages.current.add(msgId)
       addMessageToConv(convId, 'user', {
         text,
         msgId,
-        attachments: pending,
+        attachments: filesToSend,
         delivery: wsOfflineRef.current ? 'queued' : 'pending',
       })
     } else if (
@@ -1536,28 +1731,12 @@ export default function useParallax() {
       addMessageToConv(convId, 'user', {
         text,
         msgId,
-        attachments,
+        attachments: filesToSend,
         delivery: 'pending',
       })
     } else if (existingMsgId && convId) {
       unconfirmedUserMessages.current.add(msgId)
       setMessageDelivery(convId, msgId, 'pending')
-    }
-
-    // Extension offline → don't navigate/new-chat into a dead end (that's what made
-    // the app "ask" for a new chat). Hold this message on ITS thread and replay it
-    // when the link returns, so the user continues the SAME conversation.
-    if (wsOfflineRef.current) {
-      queuedSend.current = { convId, msgId, text, model, intelligence, context, wire, attachments }
-      setQueuedNotice(text)
-      setSending(true, 'extension offline — send queued', convId)
-      wlog(`send QUEUED (extension offline) conv=${convId || '(none)'} ${prev(text)}`)
-      return
-    }
-
-    if (attachments?.length && convId) {
-      pendingAttachments.current.set(convId, attachments)
-      window.parallax?.sendFiles(convId, attachments)
     }
 
     // Just send. Each conversation owns a dedicated tab, and the extension opens it
@@ -1567,13 +1746,16 @@ export default function useParallax() {
     // had loaded and produced "No content script connected".
     wlog(`send → conv=${convId || '(none)'} ${prev(text)} link=${conv?.chatgptUrl || '(new tab)'}`)
     setSending(true, 'send dispatched', convId)
-    const confirmed = convId ? confirmedSelectionByConv.current[convId] : undefined
-    const modelChanged = Boolean(model && confirmed?.model !== model)
-    const modelToApply = modelChanged ? model : undefined
-    const intelligenceToApply =
-      intelligence && (modelChanged || confirmed?.intelligence !== intelligence)
-        ? intelligence
-        : undefined
+    const requested = convId ? requestedSelectionByConv.current[convId] : undefined
+    const modelToApply = requested?.model
+    const intelligenceToApply = requested?.intelligence
+    // Clear an error left by an older build that attempted to enforce its display
+    // fallback. A real user request remains recorded above and stays fail-closed.
+    if (!requested && convId === snap.current.currentConvId) {
+      const confirmed = confirmedSelectionByConv.current[convId]
+      setIntelligenceLevelState(confirmed?.intelligence || '')
+      setSelectionStatus(confirmed ? 'confirmed' : 'idle')
+    }
     // Remember the payload so a refusal (tab on the wrong chat) can replay it
     // after we navigate, and pass the thread's stored link so the page can verify.
     lastOutgoing.current = {
@@ -1583,7 +1765,17 @@ export default function useParallax() {
       wire,
       model: modelToApply,
       intelligence: intelligenceToApply,
+      attachments: filesToSend,
       silent: false,
+    }
+    const project = browserProject(conv.folderPath)
+    if (filesToSend?.length && convId) {
+      window.parallax?.sendFiles(
+        convId,
+        filesToSend,
+        project.projectKey,
+        project.projectName,
+      )
     }
     window.parallax?.send(
       text,
@@ -1594,48 +1786,24 @@ export default function useParallax() {
       conv?.chatgptUrl || undefined,
       convId || undefined,
       msgId,
+      project.projectKey,
+      project.projectName,
     )
   }
   // Keep a stable handle so the reconnect effect can replay a queued send without
   // closing over a stale `send`.
   sendRef.current = send
 
-  // Extension came back online → replay the message the user queued while it was
-  // offline, into the same thread. This is what lets them "just continue" instead
-  // of starting a new chat.
+  // Extension came back online. Resume internal continuations first, then drain
+  // the same visible user queue used while another turn is active.
   useEffect(() => {
     if (wsStatus.status !== 'connected') return
-    for (const [convId, files] of queuedFiles.current) {
-      window.parallax?.sendFiles(convId, files)
-    }
-    queuedFiles.current.clear()
     const continuations = [...queuedAgentContinuations.current.values()]
     queuedAgentContinuations.current.clear()
     for (const continuation of continuations) {
       dispatchAgentContinuation(continuation)
     }
-    const q = queuedSend.current
-    if (!q) {
-      scheduleQueuedUserSend()
-      return
-    }
-    queuedSend.current = null
-    setQueuedNotice(null)
-    wlog(`reconnected → replaying queued send into conv=${q.convId || '(current)'}`)
-    setSending(false, 'extension reconnected — replay queued send', q.convId)
-    setTimeout(
-      () => sendRef.current(
-        q.text,
-        q.model,
-        q.intelligence,
-        q.context,
-        q.attachments,
-        q.msgId,
-        q.wire,
-        q.convId || undefined,
-      ),
-      0,
-    )
+    scheduleQueuedUserSend()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsStatus])
 
@@ -1649,7 +1817,7 @@ export default function useParallax() {
     const kinds = actions.map(a => a.type).join(',') || '(none)'
     wlog(`parse conv=${convId} → actions=[${kinds}] hasDone=${hasDone}`)
 
-    // ‹plx:done› is terminal and takes PRECEDENCE. If the model wrapped a final
+    // {plx:done} is terminal and takes precedence. If the model wrapped a final
     // answer in it, we stop here — even if the same scraped blob also contains
     // action tags (stale echoes of earlier turns, or the model mixing act+done).
     // Without this, those echoed tags get re-executed and the harness "replies"
@@ -1777,7 +1945,7 @@ export default function useParallax() {
   type Disposition = { run: true } | { run: false; status: 'blocked' | 'denied'; content: string }
 
   // Execute a turn's tool actions per `decide`, update the cards, and feed the
-  // combined ‹plx:result› blocks back into the thread as an invisible turn.
+  // combined {plx:result} blocks back into the thread as an invisible turn.
   async function executeTurn(convId: string, toolActions: ToolAction[], decide: (a: ToolAction) => Disposition) {
     const decisions = toolActions.map(decide)
     const runIdx: number[] = []
@@ -1917,8 +2085,7 @@ export default function useParallax() {
       streamSnapshotLengths.current.delete(stopConv)
       clearAgentContinuations(stopConv)
     }
-    queuedSend.current = null
-    setQueuedNotice(null)
+    if (lastOutgoing.current) lastOutgoing.current.trackedByExtension = false
     setPendingApproval(null)
     setSending(false, 'user pressed Stop', stopConv)
     setErrorMessage(null)
@@ -1943,11 +2110,15 @@ export default function useParallax() {
     return queued
   }
 
-  function editQueuedMessage(msgId: string): string | null {
-    const queued = takeQueuedUserSend(msgId)
-    if (!queued) return null
-    wlog(`queued message restored conv=${queued.convId} ${prev(queued.text)}`)
-    return queued.text
+  function editQueuedMessage(msgId: string, text: string): boolean {
+    const trimmed = text.trim()
+    if (!trimmed) return false
+    const queued = queuedUserSends.current.find((message) => message.msgId === msgId)
+    if (!queued) return false
+    queued.text = trimmed
+    setQueuedMessageCounts((counts) => ({ ...counts }))
+    wlog(`queued message edited conv=${queued.convId} ${prev(trimmed)}`)
+    return true
   }
 
   function deleteQueuedMessage(msgId: string) {
@@ -2076,11 +2247,8 @@ export default function useParallax() {
       convId,
       [...(pendingAttachments.current.get(convId) || []), ...files],
     )
-    if (wsOfflineRef.current) {
-      queuedFiles.current.set(convId, [...(queuedFiles.current.get(convId) || []), ...files])
-      return
-    }
-    window.parallax?.sendFiles(convId, files)
+    // Keep attachments local until the message is sent. Selecting a file must not
+    // create or open a ChatGPT Project by itself.
   }
 
   function setFolderPath(convId: string, folderPath: string | null) {
@@ -2104,7 +2272,6 @@ export default function useParallax() {
   }
 
   function deleteAllConversations() {
-    queuedSend.current = null
     queuedUserSends.current = []
     setQueuedMessageCounts({})
     setConversations({})
@@ -2134,8 +2301,6 @@ export default function useParallax() {
     // Only an explicit "disconnected" counts as offline — the composer warns and
     // queues on this, but NOT on the transient "waiting" state at startup/reload.
     extensionDisconnected: extensionWarningVisible,
-    // The message the user typed while offline, held to auto-send on reconnect.
-    queuedNotice,
     serverStatus,
     wsStatus,
     chatgptStatus,

@@ -11,9 +11,14 @@ test('presents the argument and the hydrated release on desktop', async ({ page 
     'href',
     '/download/macos',
   );
+  await expect(page).toHaveTitle('Parallax');
+  await expect(page.getByRole('link', { name: 'Get the Chrome extension' })).toHaveAttribute(
+    'href',
+    'https://chromewebstore.google.com/detail/parallax/bfnlhalnojbjoipblfnhhljffajanaei?authuser=0&hl=en-GB',
+  );
   await expect(page.getByText('Version 0.1.1 · 6 August 2026')).toBeVisible();
   await expect(page.getByRole('cell', { name: '99 MB' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: '64 KB' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Automatic' })).toBeVisible();
 });
 
 test('keeps the download path usable on mobile without horizontal overflow', async ({ page }) => {

@@ -49,7 +49,7 @@
       padding: 14px;
     }
 
-    /* Header — mirrors the app sidebar's "Parallax / Alpha" lockup. */
+    /* Header mirrors the app sidebar's "Parallax / Alpha" lockup. */
     .header { display: flex; align-items: center; gap: 7px; margin-bottom: 14px; }
     .wordmark { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
     .pill {
@@ -148,10 +148,10 @@
 
   <div class="disclosure" id="disclosure">
     <strong>Local ChatGPT bridge.</strong>
-    When enabled, Parallax sends prompts and attachments you choose from the
-    desktop app to Parallax-owned ChatGPT task tabs and returns their replies.
-    Task data stays between your Mac and your signed-in ChatGPT session; it is
-    not sent to the developer.
+    When enabled, Parallax creates or reuses ChatGPT Projects named from your
+    folder names, sends prompts and attachments you choose to Parallax-owned task
+    tabs, and returns their replies. Task data stays between your Mac and your
+    signed-in ChatGPT session; it is not sent to the developer.
     <a href="https://parallax.akshith.io/privacy" target="_blank">Privacy details</a>
   </div>
 
@@ -161,15 +161,15 @@
     <div class="card">
       <div class="row">
         <span class="label">Desktop app</span>
-        <span class="status"><span class="dot" id="ws-dot"></span><span id="ws-label">—</span></span>
+        <span class="status"><span class="dot" id="ws-dot"></span><span id="ws-label">…</span></span>
       </div>
       <div class="row">
         <span class="label">ChatGPT tab</span>
-        <span class="status"><span class="dot" id="tab-dot"></span><span id="tab-label">—</span></span>
+        <span class="status"><span class="dot" id="tab-dot"></span><span id="tab-label">…</span></span>
       </div>
       <div class="row">
         <span class="label">Page bridge</span>
-        <span class="status"><span class="dot" id="content-dot"></span><span id="content-label">—</span></span>
+        <span class="status"><span class="dot" id="content-dot"></span><span id="content-label">…</span></span>
       </div>
     </div>
 
@@ -177,7 +177,6 @@
     <input type="text" id="ws-url" value="ws://localhost:8765" spellcheck="false" />
 
     <button class="primary" id="connect-btn">Reconnect</button>
-    <button class="secondary" id="heal-btn">Reconnect page bridge</button>
     <button class="secondary" id="disable-btn">Disable bridge</button>
 
     <div class="note error" id="error-msg"></div>

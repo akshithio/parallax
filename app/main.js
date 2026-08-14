@@ -10,6 +10,9 @@ const { createDeliveryTracker } = require('./lib/deliveryTracker');
 const { acceptsResponseSource } = require('./lib/transportPolicy');
 const { installAppReloadShortcut } = require('./lib/appReload');
 const { createAppUpdater } = require('./lib/appUpdater');
+const { isExtensionRuntimeFile, normalizeExtensionPath } = require('./lib/extensionReload');
+const { findAvailablePort } = require('./lib/rendererDev');
+const { formatLocalLogTime } = require('./lib/logTime');
 const { resolveVariant, iconFileFor, normalizePreference } = require('./lib/dockIcon');
 const { autoUpdater } = require('electron-updater');
 
@@ -62,8 +65,9 @@ function defaultEditorForPython() {
 
 const WS_PORT = 8765;
 const RENDERER_DIR = __dirname;
-const NEXT_DEV_PORT = 3000;
-const APP_URL = `http://localhost:${NEXT_DEV_PORT}/`;
+// Keep the desktop renderer away from the public website's default port 3000
+// and the workflow test server on 3100.
+const NEXT_DEV_START_PORT = 3200;
 
 function dataFile() {
   return path.join(app.getPath('userData'), 'conversations.json');
@@ -73,6 +77,7 @@ let mainWindow = null;
 let wss = null;
 let chatGPTClient = null;
 let nextProcess = null;
+let nextDevPort = NEXT_DEV_START_PORT;
 let appUpdater = null;
 let pageReady = false;
 let serverListening = false;
@@ -115,13 +120,13 @@ function openLogFile() {
     fs.mkdirSync(LOG_DIR, { recursive: true });
     logStream = fs.createWriteStream(LOG_FILE, { flags: 'w' });
     logStream.on('error', () => { logStream = null; });
-    logStream.write(`# Parallax session started ${new Date().toISOString()}\n`);
+    logStream.write(`# Parallax session started ${formatLocalLogTime()}\n`);
   } catch (_) {
     logStream = null;
   }
 }
 function wlog(scope, msg, extra) {
-  const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
+  const ts = formatLocalLogTime();
   const line = `[parallax ${ts}] ${scope.padEnd(8)} ${msg}`;
   if (extra !== undefined) console.log(line, extra);
   else console.log(line);
@@ -159,16 +164,6 @@ function preview(s, n = 60) {
   return `len=${String(s).length} "${one.slice(0, n)}${one.length > n ? '…' : ''}"`;
 }
 
-// One-shot: is something already serving the dev port?
-function probeNextDev() {
-  return new Promise((resolve) => {
-    const req = http.get(`http://localhost:${NEXT_DEV_PORT}`, (res) => { res.resume(); resolve(true); });
-    req.on('error', () => resolve(false));
-    req.setTimeout(800, () => { req.destroy(); resolve(false); });
-    req.end();
-  });
-}
-
 // Kill the dev server AND its whole process group (only if WE spawned it).
 function killNext() {
   if (!nextProcess) return;
@@ -178,12 +173,12 @@ function killNext() {
   catch (_) { try { proc.kill('SIGTERM'); } catch (_) {} }
 }
 
-function waitForNextDev(maxAttempts = 60) {
+function waitForNextDev(port, maxAttempts = 60) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
     const check = () => {
       attempts++;
-      const req = http.get(`http://localhost:${NEXT_DEV_PORT}`, (res) => {
+      const req = http.get(`http://localhost:${port}`, (res) => {
         res.resume();
         resolve();
       });
@@ -191,6 +186,7 @@ function waitForNextDev(maxAttempts = 60) {
         if (attempts >= maxAttempts) reject(new Error('Next.js dev server did not start'));
         else setTimeout(check, 1000);
       });
+      req.setTimeout(2000, () => req.destroy(new Error('Renderer request timed out')));
       req.end();
     };
     check();
@@ -200,6 +196,7 @@ function waitForNextDev(maxAttempts = 60) {
 function createWindow() {
   pageReady = false;
   mainWindow = new BrowserWindow({
+    show: false,
     width: 900,
     height: 700,
     minWidth: 500,
@@ -218,17 +215,13 @@ function createWindow() {
     },
   });
 
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+  });
+
   const rendererUrl = app.isPackaged
     ? require('url').pathToFileURL(path.join(RENDERER_DIR, 'out', 'index.html')).toString()
-    : APP_URL;
-
-  // Electron's default reload follows the renderer's current URL. If that URL
-  // ever drifts to a non-root path, Next correctly serves its 404 page and every
-  // later reload stays there. Keep the app shortcut anchored to the shell root.
-  installAppReloadShortcut(mainWindow.webContents, rendererUrl, () => {
-    pageReady = false;
-    wlog('main', 'reload shortcut → app shell');
-  });
+    : null;
 
   // Harden every embedded <webview>. The preview loads the user's dev server and
   // arbitrary URLs, so it must never inherit our preload, Node, or app session.
@@ -248,36 +241,45 @@ function createWindow() {
   });
 
   if (app.isPackaged) {
+    // Electron's default reload follows the renderer's current URL. If that URL
+    // ever drifts to a non-root path, keep the shortcut anchored to the shell.
+    installAppReloadShortcut(mainWindow.webContents, rendererUrl, () => {
+      pageReady = false;
+      wlog('main', 'reload shortcut → app shell');
+    });
     mainWindow.loadURL(rendererUrl);
     return;
   }
 
-  // Start (or reuse) the Next.js dev server, then load it.
+  // Start and own a dedicated Next.js dev server, then load it. Reusing whatever
+  // happened to answer on port 3000 allowed a hung orphan to leave Electron white.
   (async () => {
     try {
-      // Reuse a dev server already listening on the port (e.g. a prior `pnpm run
-      // dev` you didn't stop) instead of spawning a second one that crashes with
-      // EADDRINUSE and leaves the app loading a half-started duplicate.
-      const alreadyUp = await probeNextDev();
-      if (alreadyUp) {
-        console.log(`[next] reusing dev server already on :${NEXT_DEV_PORT}`);
-      } else {
-        // detached:true → its own process group, so killNext() can take down the
-        // WHOLE tree (pnpm → node → next-server). Killing just the parent orphans
-        // next-server and wedges the port — that's the recurring EADDRINUSE.
-        nextProcess = spawn('pnpm', ['exec', 'next', 'dev', '-p', String(NEXT_DEV_PORT)], {
-          cwd: RENDERER_DIR,
-          stdio: 'pipe',
-          detached: true,
-        });
-        nextProcess.stdout.on('data', (d) => process.stdout.write(`[next] ${d}`));
-        nextProcess.stderr.on('data', (d) => process.stderr.write(`[next] ${d}`));
-        nextProcess.on('exit', (code) => {
-          if (code !== 0 && code !== null) console.error(`[next] exited with code ${code}`);
-        });
-        await waitForNextDev();
-      }
-      mainWindow.loadURL(APP_URL);
+      nextDevPort = await findAvailablePort(NEXT_DEV_START_PORT);
+      const appUrl = `http://localhost:${nextDevPort}/`;
+      installAppReloadShortcut(mainWindow.webContents, appUrl, () => {
+        pageReady = false;
+        wlog('main', 'reload shortcut → app shell');
+      });
+      wlog('next', `starting owned renderer on :${nextDevPort}`);
+      // detached:true gives the renderer its own process group so killNext() can
+      // stop pnpm, Node, and next-server together on every normal exit path.
+      nextProcess = spawn('pnpm', ['exec', 'next', 'dev', '-p', String(nextDevPort)], {
+        cwd: RENDERER_DIR,
+        stdio: 'pipe',
+        detached: true,
+        env: {
+          ...process.env,
+          PARALLAX_NEXT_DIST_DIR: `.next-dev-${nextDevPort}`,
+        },
+      });
+      nextProcess.stdout.on('data', (d) => process.stdout.write(`[next] ${d}`));
+      nextProcess.stderr.on('data', (d) => process.stderr.write(`[next] ${d}`));
+      nextProcess.on('exit', (code) => {
+        if (code !== 0 && code !== null) console.error(`[next] exited with code ${code}`);
+      });
+      await waitForNextDev(nextDevPort);
+      await mainWindow.loadURL(appUrl);
     } catch (err) {
       console.error('Failed to start Next.js dev server:', err);
       dialog.showErrorBox('Startup Error', `Failed to start Next.js dev server.\n\nMake sure dependencies are installed (pnpm install).\n\n${err.message}`);
@@ -370,6 +372,12 @@ function startWebSocketServer() {
               convId: msg.convId || '',
             });
             break;
+          case 'turn_status':
+            sendToRenderer('status', {
+              type: 'turns',
+              turns: Array.isArray(msg.turns) ? msg.turns : [],
+            });
+            break;
           case 'sent': {
             const delivery = pendingUserSends.acknowledge(msg.msgId, msg.convId);
             if (delivery) sendToRenderer('sent', delivery);
@@ -453,7 +461,8 @@ function startWebSocketServer() {
           case 'new_chat_started':
             sendToRenderer('status', {
               type: 'chatgpt',
-              status: 'navigating',
+              status: msg.url ? 'ready' : 'navigating',
+              url: msg.url || '',
               convId: msg.convId || '',
             });
             break;
@@ -499,17 +508,26 @@ function watchExtensionForReload() {
   const extDir = path.join(__dirname, '..', 'ext');
   if (!fs.existsSync(extDir)) return;
   let timer = null;
+  let changedFile = '';
+  const scheduleReload = (relativeFile) => {
+    const file = normalizeExtensionPath(relativeFile);
+    if (!isExtensionRuntimeFile(file)) return;
+    changedFile = file;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (sendToExtension({ type: 'reload_extension' })) {
+        wlog('dev', `extension runtime changed (${changedFile}) → reloading the extension`);
+      }
+    }, 500);
+  };
   try {
-    fs.watch(extDir, { recursive: true }, (_evt, file) => {
-      if (file && !/\.(js|json|html)$/.test(String(file))) return;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (sendToExtension({ type: 'reload_extension' })) {
-          wlog('dev', `extension source changed (${file}) → reloading the extension`);
-        }
-      }, 500); // debounce: editors fire several events per save
+    fs.watch(path.join(extDir, 'src'), { recursive: true }, (_evt, file) => {
+      scheduleReload(file ? `src/${file}` : '');
     });
-    wlog('dev', `watching ${extDir} — the extension now reloads itself on change`);
+    fs.watch(path.join(extDir, 'manifest.json'), () => {
+      scheduleReload('manifest.json');
+    });
+    wlog('dev', `watching extension runtime files in ${extDir}`);
   } catch (e) {
     wlog('dev', `extension watch unavailable: ${e.message}`);
   }
@@ -550,7 +568,18 @@ ipcMain.handle('set-dock-icon', (_event, preference) => applyDockIcon(preference
 
 ipcMain.on('parallax-log', (_event, { scope, msg, extra }) => wlog(scope || 'renderer', msg, extra));
 
-ipcMain.on('send-message', (_event, { text, model, intelligence, wireText, silent, expectUrl, convId, msgId: requestedMsgId }) => {
+ipcMain.on('send-message', (_event, {
+  text,
+  model,
+  intelligence,
+  wireText,
+  silent,
+  expectUrl,
+  convId,
+  msgId: requestedMsgId,
+  projectKey,
+  projectName,
+}) => {
   const msgId = requestedMsgId || `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   // `wireText` (preamble + task, or fed-back tool results) is what ChatGPT actually
   // receives; `text` is the clean user message echoed back for display. `silent`
@@ -558,7 +587,17 @@ ipcMain.on('send-message', (_event, { text, model, intelligence, wireText, silen
   const outgoing = wireText || text;
   wlog('ipc', `send-message ${silent ? '(silent) ' : ''}${preview(outgoing)} model=${model || '-'} intel=${intelligence || '-'}`);
   if (!silent) pendingUserSends.remember(msgId, text, convId);
-  if (!sendToExtension({ type: 'send_message', text: outgoing, msgId, model, intelligence, expectUrl, convId })) {
+  if (!sendToExtension({
+    type: 'send_message',
+    text: outgoing,
+    msgId,
+    model,
+    intelligence,
+    expectUrl,
+    convId,
+    projectKey,
+    projectName,
+  })) {
     pendingUserSends.fail(msgId);
     sendToRenderer('error', {
       convId,
@@ -603,12 +642,25 @@ ipcMain.on('edit-message', (_event, payload) => {
 
 // Picking a model/intelligence in the app switches it on that conversation's
 // dedicated ChatGPT tab right away.
-ipcMain.on('switch-model', (_event, { model, intelligence, convId }) => {
-  sendToExtension({ type: 'switch_model', model, intelligence, convId });
+ipcMain.on('switch-model', (_event, {
+  model,
+  intelligence,
+  convId,
+  projectKey,
+  projectName,
+}) => {
+  sendToExtension({
+    type: 'switch_model',
+    model,
+    intelligence,
+    convId,
+    projectKey,
+    projectName,
+  });
 });
 
-ipcMain.on('send-files', (_event, { convId, files }) => {
-  if (!sendToExtension({ type: 'send_files', convId, files })) {
+ipcMain.on('send-files', (_event, { convId, files, projectKey, projectName }) => {
+  if (!sendToExtension({ type: 'send_files', convId, files, projectKey, projectName })) {
     sendToRenderer('error', { convId, message: 'No extension connected — cannot upload files.' });
   }
 });
@@ -620,12 +672,14 @@ ipcMain.on('debug-dom', () => {
 });
 
 ipcMain.on('new-chat', (_event, payload) => {
-  if (!sendToExtension({ type: 'new_chat', convId: payload && payload.convId })) {
-    sendToRenderer('error', {
-      convId: payload && payload.convId,
-      message: 'No extension connected — cannot start new chat.',
-    });
-  }
+  // An empty draft is allowed while the extension is offline. Its first send
+  // repeats the project identity and performs the same setup fail-closed.
+  sendToExtension({
+    type: 'new_chat',
+    convId: payload && payload.convId,
+    projectKey: payload && payload.projectKey,
+    projectName: payload && payload.projectName,
+  });
 });
 
 ipcMain.on('navigate', (_event, payload) => {
@@ -813,7 +867,7 @@ ipcMain.handle('preview-list-servers', async () => {
     const host = value.slice(0, colon);
     if (!['*', '127.0.0.1', 'localhost', '[::]', '[::1]'].includes(host)) continue;
     const port = Number(value.slice(colon + 1).split(/\s+/, 1)[0]);
-    if (!Number.isInteger(port) || port <= 0 || port === WS_PORT || port === NEXT_DEV_PORT) continue;
+    if (!Number.isInteger(port) || port <= 0 || port === WS_PORT || port === nextDevPort) continue;
     if (!servers.has(port)) {
       servers.set(port, {
         port,

@@ -9,10 +9,13 @@
     {
       "source": "/download/macos",
       "destination": "/api/download?kind=macos"
-    },
+    }
+  ],
+  "redirects": [
     {
       "source": "/download/extension",
-      "destination": "/api/download?kind=extension"
+      "destination": "https://chromewebstore.google.com/detail/parallax/bfnlhalnojbjoipblfnhhljffajanaei?authuser=0&hl=en-GB",
+      "permanent": false
     }
   ],
   "headers": [

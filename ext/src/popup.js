@@ -7,7 +7,6 @@ const contentDot = el('content-dot');
 const contentLabel = el('content-label');
 const wsUrlInput = el('ws-url');
 const connectBtn = el('connect-btn');
-const healBtn = el('heal-btn');
 const errorMsg = el('error-msg');
 const hint = el('hint');
 const enableBtn = el('enable-btn');
@@ -29,7 +28,7 @@ async function refresh() {
     const tabs = await chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://chat.openai.com/*'] });
     tabOpen = tabs.length > 0;
   } catch {}
-  paint(tabDot, tabLabel, tabOpen ? 'ok' : 'bad', tabOpen ? 'Open' : 'Not open');
+  paint(tabDot, tabLabel, tabOpen ? 'ok' : '', tabOpen ? 'Open' : 'Opens on demand');
 
   let ws = 'disconnected';
   let content = false;
@@ -52,21 +51,21 @@ async function refresh() {
 
   const wsOk = ws === 'connected';
   paint(wsDot, wsLabel, wsOk ? 'ok' : 'bad', wsOk ? 'Connected' : ws === 'error' ? 'Error' : 'Disconnected');
-  // The page bridge is the piece that silently breaks after an extension reload —
-  // surface it on its own instead of implying "connected" from the socket alone.
-  paint(contentDot, contentLabel, content ? 'ok' : wsOk && tabOpen ? 'warn' : 'bad', content ? 'Connected' : 'Not connected');
-
-  healBtn.style.display = content ? 'none' : 'block';
-  healBtn.disabled = !tabOpen;
+  // An idle page bridge is normal. The desktop send path creates or recovers its
+  // owned ChatGPT task tab and waits for the content script automatically.
+  paint(
+    contentDot,
+    contentLabel,
+    content ? 'ok' : '',
+    content ? 'Connected' : wsOk ? 'Ready on demand' : 'Waiting for desktop',
+  );
 
   errorMsg.textContent = error;
   hint.textContent = !wsOk
     ? 'Start the Parallax desktop app, then hit Reconnect.'
-    : !tabOpen
-      ? 'Open ChatGPT in a tab so Parallax has a page to drive.'
-      : !content
-        ? 'The ChatGPT page isn’t bridged — this happens after reloading the extension. Reconnect it below.'
-        : '';
+    : !content
+      ? 'No action is required. Parallax connects a task tab automatically when you send a message from the desktop app.'
+      : '';
 }
 
 enableBtn.addEventListener('click', () => {
@@ -91,18 +90,6 @@ connectBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'connect_ws', url }, (resp) => {
     urlDirty = false;
     if (!resp || !resp.ok) errorMsg.textContent = 'Failed to connect';
-    refresh();
-  });
-});
-
-healBtn.addEventListener('click', () => {
-  errorMsg.textContent = '';
-  healBtn.disabled = true;
-  healBtn.textContent = 'Reconnecting…';
-  chrome.runtime.sendMessage({ type: 'heal_content' }, (resp) => {
-    healBtn.textContent = 'Reconnect page bridge';
-    healBtn.disabled = false;
-    if (!resp || !resp.ok) errorMsg.textContent = 'Could not reach the ChatGPT page — try refreshing that tab.';
     refresh();
   });
 });
