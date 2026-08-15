@@ -21,6 +21,7 @@ test('publishes stable download and repository links', () => {
     /https:\/\/chromewebstore\.google\.com\/detail\/parallax\/bfnlhalnojbjoipblfnhhljffajanaei\?authuser=0&amp;hl=en-GB/,
   );
   assert.doesNotMatch(html, /href="\/download\/extension"/);
+  assert.doesNotMatch(html, /Built by Akshith|href="https:\/\/akshith\.io"/);
   assert.match(html, /https:\/\/github\.com\/akshithio\/parallax/);
 });
 
